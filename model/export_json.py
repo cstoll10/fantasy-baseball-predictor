@@ -16,7 +16,32 @@ replacements, scarcity, _ = calculate_replacements(raw_df, pos_map)
 df['position'] = df['Name'].map(pos_map).fillna('OF')
 df['replacement_xwOBA'] = df['position'].map(replacements).fillna(0.315)
 df['scarcity'] = df['position'].map(scarcity).fillna(1.0)
-df['VORP_raw'] = (df['xwOBA'] - df['replacement_xwOBA']) * df['proj_PA'] * 1.15 * df['scarcity']
+
+# 7-category VORP: HR, RBI, SB, H, TB, OBP
+df['approx_AB'] = df['proj_PA'] * 0.88
+df['H']  = (df['AVG'] * df['approx_AB']).round(1)
+df['TB'] = (df['SLG'] * df['approx_AB']).round(1)
+
+WEIGHTS = {'HR': 1.4, 'RBI': 1.2, 'SB': 1.8, 'H': 1.0, 'TB': 1.0, 'OBP': 0.8}
+CATS = list(WEIGHTS.keys())
+
+qualified = df[df['proj_PA'] >= 300].copy()
+replacement_cats = {}
+cat_stds = {}
+for cat in CATS:
+    sorted_vals = qualified[cat].sort_values(ascending=False)
+    cutoff = min(145, len(sorted_vals) - 1)
+    replacement_cats[cat] = sorted_vals.iloc[cutoff]
+    cat_stds[cat] = qualified[cat].std()
+
+for cat in CATS:
+    df[f'{cat}_z'] = ((df[cat] - replacement_cats[cat]) / cat_stds[cat]).clip(lower=-2)
+
+df['VORP_raw'] = sum(df[f'{cat}_z'] * WEIGHTS[cat] for cat in CATS)
+
+# Apply positional scarcity on top
+df['VORP_raw'] = df['VORP_raw'] * df['scarcity']
+
 max_vorp = df['VORP_raw'].max()
 df['VORP'] = (df['VORP_raw'] / max_vorp * 100).round(1)
 
