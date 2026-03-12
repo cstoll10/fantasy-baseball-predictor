@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import os
 
 HITTER_SKILLS = [
     'xwOBA', 'xSLG', 'xBA', 'Barrel%', 'HardHit%',
@@ -11,6 +12,15 @@ HITTER_COUNTING = ['HR', 'RBI', 'R', 'SB', 'AVG', 'OBP', 'SLG', 'wOBA']
 
 WEIGHTS = {2024: 5, 2023: 3, 2022: 1}
 
+def fetch_data():
+    from pybaseball import batting_stats
+    os.makedirs("data/raw", exist_ok=True)
+    print("Fetching hitter stats (2022-2024)...")
+    hitters = batting_stats(2022, 2024, qual=150)
+    hitters.to_csv("data/raw/hitters.csv", index=False)
+    print(f"Fetched {len(hitters)} hitter seasons")
+    return hitters
+
 def age_adjustment(age, stat_type='power'):
     peak = 27 if stat_type == 'power' else 26
     delta = age - peak
@@ -19,6 +29,9 @@ def age_adjustment(age, stat_type='power'):
     return max(0.7, 1.0 - 0.02 * abs(delta) * (1 if delta > 0 else 0.5))
 
 def build_projections(csv_path='data/raw/hitters.csv'):
+    if not os.path.exists(csv_path):
+        fetch_data()
+
     df = pd.read_csv(csv_path)
     df = df[df['PA'] >= 100].copy()
 
