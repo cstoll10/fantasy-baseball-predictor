@@ -1,0 +1,29 @@
+name: Deploy to GitHub Pages
+on:
+  push:
+    branches: [main]
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+      - name: Run projection model
+        run: |
+          pip install pandas numpy scikit-learn pybaseball
+          python3 model/projections.py
+          python3 model/export_json.py
+      - name: Build frontend
+        run: npm ci && npm run build
+      - name: Deploy
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
