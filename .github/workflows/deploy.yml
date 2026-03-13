@@ -15,23 +15,18 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+      - name: Install dependencies
+        run: pip install pandas numpy scikit-learn pybaseball
+      - name: Fetch 2025 data
+        run: python3 scripts/fetch_2025.py
       - name: Run projection model
-        run: |
-          pip install pandas numpy scikit-learn pybaseball
-          python3 -c "
-from pybaseball import batting_stats
-df = batting_stats(2025, 2025, qual=20)
-df.to_csv('data/raw/hitters_2025.csv', index=False)
-print('Fetched', len(df), '2025 players')
-"
-          python3 model/projections.py
-          python3 model/export_json.py
+        run: python3 model/projections.py
+      - name: Export JSON
+        run: PYTHONPATH=. python3 model/export_json.py
       - name: Verify players.json was created
         run: ls -la public/players.json
       - name: Build frontend
         run: npm ci && npm run build
-      - name: Verify dist contents
-        run: ls -la dist/
       - name: Deploy
         uses: peaceiris/actions-gh-pages@v4
         with:
