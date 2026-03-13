@@ -10,6 +10,11 @@ df = df.where(pd.notna(df), None)
 
 print("Calculating replacement levels...")
 raw_df = pd.read_csv('data/raw/hitters.csv')
+if os.path.exists('data/raw/hitters_2025.csv'):
+    h2025 = pd.read_csv('data/raw/hitters_2025.csv')
+    if 2025 not in raw_df['Season'].values:
+        raw_df = pd.concat([raw_df, h2025], ignore_index=True)
+        print('Merged 2025 history data')
 history_df = raw_df.copy()
 pos_map = get_pos_map()
 replacements, scarcity, _ = calculate_replacements(raw_df, pos_map)

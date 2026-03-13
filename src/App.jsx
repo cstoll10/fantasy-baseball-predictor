@@ -306,7 +306,7 @@ export default function App() {
               </div>
 
               {/* Projections */}
-              <div style={{fontSize:12,color:"#888",fontWeight:500,marginBottom:6}}>2025 Projections</div>
+              <div style={{fontSize:12,color:"#888",fontWeight:500,marginBottom:6}}>2026 Projections</div>
               {Object.entries(selected.projections).map(([k,v]) => v != null && (
                 <div key={k} style={{display:"flex",justifyContent:"space-between",
                   padding:"4px 0",borderBottom:"0.5px solid #f0f0f0",fontSize:13}}>
