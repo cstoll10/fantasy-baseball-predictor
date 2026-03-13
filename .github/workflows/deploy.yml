@@ -18,6 +18,12 @@ jobs:
       - name: Run projection model
         run: |
           pip install pandas numpy scikit-learn pybaseball
+          python3 -c "
+from pybaseball import batting_stats
+df = batting_stats(2025, 2025, qual=20)
+df.to_csv('data/raw/hitters_2025.csv', index=False)
+print('Fetched', len(df), '2025 players')
+"
           python3 model/projections.py
           python3 model/export_json.py
       - name: Verify players.json was created

@@ -10,15 +10,21 @@ HITTER_SKILLS = [
 
 HITTER_COUNTING = ['HR', 'RBI', 'R', 'SB', 'AVG', 'OBP', 'SLG', 'wOBA']
 
-WEIGHTS = {2024: 5, 2023: 3, 2022: 1}
+WEIGHTS = {2025: 8, 2024: 5, 2023: 3, 2022: 1}
 
 def fetch_data():
     from pybaseball import batting_stats
+    import glob
     os.makedirs("data/raw", exist_ok=True)
     print("Fetching hitter stats (2022-2024)...")
     hitters = batting_stats(2022, 2024, qual=150)
     hitters.to_csv("data/raw/hitters.csv", index=False)
     print(f"Fetched {len(hitters)} hitter seasons")
+    # Add 2025 if available
+    if os.path.exists("data/raw/hitters_2025.csv"):
+        h2025 = pd.read_csv("data/raw/hitters_2025.csv")
+        print(f"Adding {len(h2025)} 2025 player seasons")
+        hitters = pd.concat([hitters, h2025], ignore_index=True)
     return hitters
 
 def age_adjustment(age, stat_type='power'):
@@ -33,6 +39,14 @@ def build_projections(csv_path='data/raw/hitters.csv'):
         fetch_data()
 
     df = pd.read_csv(csv_path)
+
+    # Merge 2025 data if available
+    path_2025 = 'data/raw/hitters_2025.csv'
+    if os.path.exists(path_2025):
+        h2025 = pd.read_csv(path_2025)
+        if 2025 not in df['Season'].values:
+            print(f"Merging {len(h2025)} 2025 player seasons...")
+            df = pd.concat([df, h2025], ignore_index=True)
     df = df[df['PA'] >= 100].copy()
 
     all_cols = HITTER_SKILLS + HITTER_COUNTING + ['Name', 'IDfg', 'Season', 'Age', 'Team', 'G', 'PA', 'AB']
