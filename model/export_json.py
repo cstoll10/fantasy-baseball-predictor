@@ -10,6 +10,7 @@ df = df.where(pd.notna(df), None)
 
 print("Calculating replacement levels...")
 raw_df = pd.read_csv('data/raw/hitters.csv')
+history_df = raw_df.copy()
 pos_map = get_pos_map()
 replacements, scarcity, _ = calculate_replacements(raw_df, pos_map)
 
@@ -62,6 +63,27 @@ for _, row in df.iterrows():
         except:
             return None
 
+    # Per-season history
+    player_history = history_df[history_df['Name'] == row['Name']].sort_values('Season')
+    season_history = []
+    for _, hr in player_history.iterrows():
+        def sf3(v):
+            try: return round(float(v), 3) if v is not None and not pd.isna(v) else None
+            except: return None
+        season_history.append({
+            'season': int(hr['Season']),
+            'xwOBA':    sf3(hr.get('xwOBA')),
+            'HardHit%': sf3(hr.get('HardHit%')),
+            'Barrel%':  sf3(hr.get('Barrel%')),
+            'K%':       sf3(hr.get('K%')),
+            'BB%':      sf3(hr.get('BB%')),
+            'SwStr%':   sf3(hr.get('SwStr%')),
+            'BABIP':    sf3(hr.get('BABIP')),
+            'GB%':      sf3(hr.get('GB%')),
+            'FB%':      sf3(hr.get('FB%')),
+            'Pull%':    sf3(hr.get('Pull%')),
+        })
+
     players.append({
         'id': int(row['IDfg']) if row['IDfg'] else None,
         'name': row['Name'],
@@ -94,6 +116,7 @@ for _, row in df.iterrows():
             'Pull%':    safe_float(row['Pull%']),
         },
         'VORP': safe_float(row['VORP']),
+        'history': season_history,
     })
 
 players.sort(key=lambda x: x['VORP'] or 0, reverse=True)
