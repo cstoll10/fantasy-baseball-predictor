@@ -14,7 +14,7 @@ import numpy as np
 warnings.filterwarnings("ignore")
 
 LEAGUE_SIZE  = 12
-POOL_SIZE    = 300   # top N hitters/pitchers used for z-scores, VAR, percentiles
+POOL_SIZE    = 300
 ROSTER_SLOTS = {"C":1,"1B":1,"2B":1,"SS":1,"3B":1,"OF":3,"UTIL":1,"SP":5,"RP":3,"P":2,"BN":7}
 HIT_CATS     = ["R","HR","RBI","SB","OBP","H","TB"]
 PIT_CATS     = ["W","K","ERA","WHIP","SV","HLD","QS"]
@@ -135,21 +135,18 @@ def load_projections():
                 print(f"  + {system} {ftype}s: {len(df)} rows")
             except Exception as e:
                 print(f"  x {system} {ftype}s: {e}")
-
     hitters  = pd.concat(hitter_frames,  ignore_index=True) if hitter_frames  else pd.DataFrame()
     pitchers = pd.concat(pitcher_frames, ignore_index=True) if pitcher_frames else pd.DataFrame()
     return hitters, pitchers
 
 def merge_players(hitters, pitchers, pos_map, role_map):
     players = {}
-
     def process(df, ptype):
         for _, row in df.iterrows():
             name = normalize_name(str(row.get("Name", "")))
             if not name: continue
             key = f"{name}_{ptype}"
             raw_name = str(row.get("Name","")).strip()
-
             if key not in players:
                 if ptype == "hitter":
                     csv_pos  = normalize_pos(str(row.get("Pos",""))) or "OF"
@@ -157,7 +154,6 @@ def merge_players(hitters, pitchers, pos_map, role_map):
                 else:
                     csv_pos  = normalize_pos(str(row.get("Pos",""))) or "SP"
                     real_pos = role_map.get(raw_name, csv_pos)
-
                 players[key] = {
                     "id":      key,
                     "name":    raw_name,
@@ -166,10 +162,8 @@ def merge_players(hitters, pitchers, pos_map, role_map):
                     "type":    ptype,
                     "systems": {},
                 }
-
             p = players[key]
             if row.get("Team"): p["team"] = str(row["Team"]).strip()
-
             if ptype == "hitter":
                 p["systems"][row["_system"]] = {
                     "G":    get(row,"G"),   "PA":   get(row,"PA"),
@@ -191,7 +185,6 @@ def merge_players(hitters, pitchers, pos_map, role_map):
                     "HLD":  get(row,"HLD","HD"), "QS": get(row,"QS"),
                     "BB":   get(row,"BB"),  "FIP":  get(row,"FIP"),
                 }
-
     if not hitters.empty:  process(hitters,  "hitter")
     if not pitchers.empty: process(pitchers, "pitcher")
     return list(players.values())
@@ -242,18 +235,14 @@ def filter_qualified(players):
 def add_zscores_var(players):
     hitters  = [p for p in players if p["type"] == "hitter"]
     pitchers = [p for p in players if p["type"] == "pitcher"]
-
-    # Use top POOL_SIZE by projected PA/IP as the comparison pool
     h_pool = sorted(hitters,  key=lambda x: x["consensus"].get("PA") or 0, reverse=True)[:POOL_SIZE]
     p_pool = sorted(pitchers, key=lambda x: x["consensus"].get("IP") or 0, reverse=True)[:POOL_SIZE]
 
     def compute_z(pool, all_type, cats):
-        # Build distribution from pool only
         stats = {}
         for cat in cats:
             vals = [p["consensus"].get(cat) for p in pool if p["consensus"].get(cat) is not None]
             stats[cat] = (np.mean(vals), np.std(vals) or 1) if vals else (0, 1)
-        # Score ALL players of that type against pool distribution
         for p in all_type:
             z = 0.0
             for cat in cats:
@@ -267,18 +256,14 @@ def add_zscores_var(players):
     compute_z(h_pool, hitters,  HIT_CATS)
     compute_z(p_pool, pitchers, PIT_CATS)
 
-    # Replacement level based on roster slots
     h_slots = LEAGUE_SIZE * (ROSTER_SLOTS["C"] + ROSTER_SLOTS["1B"] + ROSTER_SLOTS["2B"] +
                               ROSTER_SLOTS["SS"] + ROSTER_SLOTS["3B"] + ROSTER_SLOTS["OF"] +
                               ROSTER_SLOTS["UTIL"])
     p_slots = LEAGUE_SIZE * (ROSTER_SLOTS["SP"] + ROSTER_SLOTS["RP"] + ROSTER_SLOTS["P"])
-
     h_sorted = sorted(hitters,  key=lambda x: x.get("zScore",0), reverse=True)
     p_sorted = sorted(pitchers, key=lambda x: x.get("zScore",0), reverse=True)
-
     h_repl = h_sorted[h_slots]["zScore"] if len(h_sorted) > h_slots else 0
     p_repl = p_sorted[p_slots]["zScore"] if len(p_sorted) > p_slots else 0
-
     for p in hitters:  p["VAR"] = round(p.get("zScore",0) - h_repl, 2)
     for p in pitchers: p["VAR"] = round(p.get("zScore",0) - p_repl, 2)
     return players
@@ -296,29 +281,21 @@ def add_tiers(players):
 def add_percentiles(players):
     hitters  = [p for p in players if p["type"] == "hitter"]
     pitchers = [p for p in players if p["type"] == "pitcher"]
-
-    # Build distribution from top POOL_SIZE only
     h_pool = sorted(hitters,  key=lambda x: x["consensus"].get("PA") or 0, reverse=True)[:POOL_SIZE]
     p_pool = sorted(pitchers, key=lambda x: x["consensus"].get("IP") or 0, reverse=True)[:POOL_SIZE]
 
     def compute(pool, all_type, cats):
         for cat in cats:
-            vals = sorted([p["consensus"].get(cat) for p in pool
-                          if p["consensus"].get(cat) is not None])
+            vals = sorted([p["consensus"].get(cat) for p in pool if p["consensus"].get(cat) is not None])
             n = len(vals)
             if not n: continue
             for p in all_type:
                 v = p["consensus"].get(cat)
-                if v is None:
-                    p.setdefault("percentiles", {})[cat] = None
-                else:
-                    pct = len([x for x in vals if x <= v]) / n
-                    # Cap at 1.0 for players above pool max
-                    p.setdefault("percentiles", {})[cat] = round(min(pct, 1.0), 4)
+                pct = len([x for x in vals if x <= v]) / n if v is not None else None
+                p.setdefault("percentiles", {})[cat] = round(min(pct, 1.0), 4) if pct is not None else None
 
     compute(h_pool, hitters,  HIT_CATS + ["wOBA","wRC+","AVG","SLG","ISO"])
     compute(p_pool, pitchers, PIT_CATS + ["FIP"])
-
     all_vars = sorted([p.get("VAR",0)    for p in players])
     all_z    = sorted([p.get("zScore",0) for p in players])
     n = len(all_vars)
@@ -327,6 +304,46 @@ def add_percentiles(players):
         z = p.get("zScore",0)
         p.setdefault("percentiles",{})["VAR"]    = round(len([x for x in all_vars if x<=v])/n, 4)
         p.setdefault("percentiles",{})["zScore"] = round(len([x for x in all_z    if x<=z])/n, 4)
+    return players
+
+def add_fantasy_value(players):
+    """
+    CWS  = Category Win Score: % of pool this player beats per category, averaged (0-100)
+    WFPTS = Weighted Fantasy Points: normalized 0-100 score per category, averaged (0-100)
+    """
+    hitters  = [p for p in players if p["type"] == "hitter"]
+    pitchers = [p for p in players if p["type"] == "pitcher"]
+
+    def compute(pool, cats):
+        if not pool: return
+        cat_sorted = {}
+        for cat in cats:
+            vals = [p["consensus"].get(cat) for p in pool if p["consensus"].get(cat) is not None]
+            vals.sort()
+            cat_sorted[cat] = vals
+
+        for p in pool:
+            cws_scores, wfpts_scores = [], []
+            for cat in cats:
+                val = p["consensus"].get(cat)
+                if val is None: continue
+                sorted_vals = cat_sorted[cat]
+                n = len(sorted_vals)
+                if not n: continue
+                beats = len([v for v in sorted_vals if v < val])
+                lb = cat in LOWER_BETTER
+                if lb: beats = n - beats - 1
+                cws_scores.append(beats / n * 100)
+                min_v, max_v = sorted_vals[0], sorted_vals[-1]
+                rng = max_v - min_v or 1
+                norm = (val - min_v) / rng * 100
+                if lb: norm = 100 - norm
+                wfpts_scores.append(norm)
+            p["CWS"]   = round(float(np.mean(cws_scores)),  1) if cws_scores  else 0.0
+            p["WFPTS"] = round(float(np.mean(wfpts_scores)), 1) if wfpts_scores else 0.0
+
+    compute(hitters,  HIT_CATS)
+    compute(pitchers, PIT_CATS)
     return players
 
 def add_scarcity(players):
@@ -394,7 +411,6 @@ def load_historical():
 
 def main():
     print("\nFantasy Baseball 2026 - Processing Pipeline\n")
-
     print("Step 1: Loading projection CSVs...")
     hitters, pitchers = load_projections()
     if hitters.empty and pitchers.empty:
@@ -412,20 +428,23 @@ def main():
     print("\nStep 4: Filtering qualified players...")
     players = filter_qualified(players)
 
-    print("\nStep 5: Computing stats (pool = top {POOL_SIZE} per type)...")
+    print(f"\nStep 5: Computing stats (pool = top {POOL_SIZE} per type)...")
     players = add_consensus(players)
     players = add_disagreement(players)
     players = add_zscores_var(players)
     players = add_tiers(players)
     players = add_percentiles(players)
 
-    print("\nStep 6: Position scarcity...")
+    print("\nStep 6: Fantasy value metrics (CWS + WFPTS)...")
+    players = add_fantasy_value(players)
+
+    print("\nStep 7: Position scarcity...")
     scarcity = add_scarcity(players)
 
-    print("\nStep 7: Flags...")
+    print("\nStep 8: Flags...")
     players = flag_players(players)
 
-    print("\nStep 8: Historical data...")
+    print("\nStep 9: Historical data...")
     history = load_historical()
     for p in players:
         p["history"] = history.get(normalize_name(p["name"]), [])
@@ -448,7 +467,6 @@ def main():
     print(f"\nDone! Wrote {len(players)} players to {OUT_FILE}")
     print(f"  Hitters:  {sum(1 for p in players if p['type']=='hitter')}")
     print(f"  Pitchers: {sum(1 for p in players if p['type']=='pitcher')}")
-    print(f"  Pool size used for percentiles/z-scores: top {POOL_SIZE} per type")
 
 if __name__ == "__main__":
     main()
