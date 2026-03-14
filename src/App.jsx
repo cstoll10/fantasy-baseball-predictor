@@ -15,20 +15,20 @@ const HIT_POSITIONS = ["All","C","1B","2B","3B","SS","OF","DH","UTIL"];
 const PIT_POSITIONS = ["All","SP","RP"];
 
 const HIT_SKILLS = [
-  {key:"BB%",    label:"BB%",       fmt:"pct",  higherBetter:true},
-  {key:"K%",     label:"K%",        fmt:"pct",  higherBetter:false},
-  {key:"BABIP",  label:"BABIP",     fmt:"avg",  higherBetter:true},
-  {key:"wOBA",   label:"wOBA",      fmt:"avg",  higherBetter:true},
-  {key:"EV",     label:"Exit Velo", fmt:"dec1", higherBetter:true},
-  {key:"LA",     label:"Launch Ang",fmt:"dec1", higherBetter:false},
-  {key:"Barrel%",label:"Barrel%",   fmt:"pct",  higherBetter:true},
-  {key:"HardHit%",label:"HardHit%", fmt:"pct",  higherBetter:true},
-  {key:"xBA",    label:"xBA",       fmt:"avg",  higherBetter:true},
-  {key:"Pull%",  label:"Pull%",     fmt:"pct",  higherBetter:false},
-  {key:"FB%",    label:"FB%",       fmt:"pct",  higherBetter:false},
-  {key:"LD%",    label:"LD%",       fmt:"pct",  higherBetter:true},
-  {key:"GB%",    label:"GB%",       fmt:"pct",  higherBetter:false},
-  {key:"WAR",    label:"WAR",       fmt:"dec1", higherBetter:true},
+  {key:"BB%",     label:"BB%",       fmt:"pct",  higherBetter:true},
+  {key:"K%",      label:"K%",        fmt:"pct",  higherBetter:false},
+  {key:"BABIP",   label:"BABIP",     fmt:"avg",  higherBetter:true},
+  {key:"wOBA",    label:"wOBA",      fmt:"avg",  higherBetter:true},
+  {key:"EV",      label:"Exit Velo", fmt:"dec1", higherBetter:true},
+  {key:"LA",      label:"Launch Ang",fmt:"dec1", higherBetter:false},
+  {key:"Barrel%", label:"Barrel%",   fmt:"pct",  higherBetter:true},
+  {key:"HardHit%",label:"HardHit%",  fmt:"pct",  higherBetter:true},
+  {key:"xBA",     label:"xBA",       fmt:"avg",  higherBetter:true},
+  {key:"Pull%",   label:"Pull%",     fmt:"pct",  higherBetter:false},
+  {key:"FB%",     label:"FB%",       fmt:"pct",  higherBetter:false},
+  {key:"LD%",     label:"LD%",       fmt:"pct",  higherBetter:true},
+  {key:"GB%",     label:"GB%",       fmt:"pct",  higherBetter:false},
+  {key:"WAR",     label:"WAR",       fmt:"dec1", higherBetter:true},
 ];
 
 const PIT_SKILLS = [
@@ -44,11 +44,14 @@ const PIT_SKILLS = [
 
 const HIT_HIST_STATS = ["G","PA","HR","R","RBI","SB","AVG","OBP","SLG","wOBA","WAR"];
 const PIT_HIST_STATS = ["G","GS","IP","W","SO","ERA","WHIP","FIP","WAR"];
+const HIT_OVERVIEW   = ["HR","RBI","R","SB","AVG","OBP","SLG","wOBA","wRC+","H","TB"];
+const PIT_OVERVIEW   = ["W","K","ERA","WHIP","SV","HLD","QS","FIP"];
 
-// Overview stat cards — hitters and pitchers
-const HIT_OVERVIEW = ["HR","RBI","R","SB","AVG","OBP","SLG","wOBA","wRC+","H","TB"];
-const PIT_OVERVIEW = ["W","K","ERA","WHIP","SV","HLD","QS","FIP"];
+// Fantasy stat keys for systems comparison
+const HIT_FANTASY = ["HR","R","RBI","SB","OBP","H","TB","AVG"];
+const PIT_FANTASY = ["W","K","ERA","WHIP","SV","HLD","QS"];
 
+// ── Color helpers ─────────────────────────────────────────────────────────────
 function pctColor(pct, lowerBetter=false) {
   const ep = lowerBetter && pct!=null ? 1-pct : pct;
   if (ep==null) return "#555";
@@ -57,6 +60,19 @@ function pctColor(pct, lowerBetter=false) {
   if (ep>=.40) return "#9CA3AF";
   if (ep>=.20) return "#FB923C";
   return "#F87171";
+}
+
+// Shades of green (elite) and red (poor) for skill percentile coloring
+function skillPctColor(pct, higherBetter=true) {
+  if (pct==null) return "#9CA3AF";
+  const ep = higherBetter ? pct : 1-pct;
+  if (ep >= 0.95) return "#00C896";   // top 5%  — bright green
+  if (ep >= 0.90) return "#34D399";   // top 10% — medium green
+  if (ep >= 0.75) return "#6EE7B7";   // top 25% — light green
+  if (ep <= 0.05) return "#EF4444";   // bottom 5%  — bright red
+  if (ep <= 0.10) return "#F87171";   // bottom 10% — medium red
+  if (ep <= 0.25) return "#FCA5A5";   // bottom 25% — light red
+  return "#9CA3AF";                   // middle — gray
 }
 
 function fmtStat(val, cat) {
@@ -68,8 +84,8 @@ function fmtStat(val, cat) {
 
 function fmtSkill(val, fmt) {
   if (val==null) return "—";
-  if (fmt==="pct") return (val*100).toFixed(1)+"%";
-  if (fmt==="avg") return Number(val).toFixed(3);
+  if (fmt==="pct")  return (val*100).toFixed(1)+"%";
+  if (fmt==="avg")  return Number(val).toFixed(3);
   if (fmt==="dec1") return Number(val).toFixed(1);
   return val;
 }
@@ -84,56 +100,43 @@ function ordinal(pct) {
   if (pct==null) return null;
   const n = Math.round(pct*100);
   if (n===100) return "99th";
-  const s=["th","st","nd","rd"];
-  const v=n%100;
+  const s=["th","st","nd","rd"], v=n%100;
   return n+(s[(v-20)%10]||s[v]||s[0]);
 }
 
 // ── Sparkline ─────────────────────────────────────────────────────────────────
-function Sparkline({values, higherBetter}) {
+function Sparkline({values, higherBetter, pct2025}) {
   const valid = values.filter(v=>v!=null);
   if (valid.length < 2) return <span style={{color:"#2a2a3e",fontSize:10}}>—</span>;
   const min=Math.min(...valid), max=Math.max(...valid), range=max-min||0.001;
-  const w=60, h=18;
+  const w=56, h=16;
   const pts = values.map((v,i)=>{
     const x=(i/(values.length-1))*w;
-    const y=v!=null?h-((v-min)/range)*h:null;
+    const y=v!=null?h-((v-min)/range)*(h-2)+1:null;
     return y!=null?`${x},${y}`:null;
   }).filter(Boolean).join(" ");
-  const last=valid[valid.length-1], prev=valid[valid.length-2];
-  const good=higherBetter?last>=prev:last<=prev;
-  const color=good?"#00C896":"#F87171";
+  const lineColor = skillPctColor(pct2025, higherBetter);
   return (
     <svg width={w} height={h} style={{verticalAlign:"middle",overflow:"visible"}}>
-      <polyline points={pts} fill="none" stroke={color} strokeWidth={1.5}/>
+      <polyline points={pts} fill="none" stroke={lineColor} strokeWidth={1.5} strokeOpacity={0.8}/>
       {values.map((v,i)=>{
         if(v==null) return null;
         const x=(i/(values.length-1))*w;
-        const y=h-((v-min)/range)*h;
-        return <circle key={i} cx={x} cy={y} r={i===values.length-1?2.5:1.5}
-          fill={i===values.length-1?color:"#444"}/>;
+        const y=h-((v-min)/range)*(h-2)+1;
+        const isLast = i===values.length-1;
+        return <circle key={i} cx={x} cy={y} r={isLast?2.5:1.5}
+          fill={isLast?lineColor:"#333"} stroke={isLast?lineColor:"none"}/>;
       })}
     </svg>
   );
 }
 
-function DisBadge({cv}) {
-  if (!cv||cv<0.12) return null;
-  const high=cv>0.25, c=high?"#F87171":"#FB923C";
-  return (
-    <span style={{fontSize:9,fontWeight:700,color:c,background:c+"20",
-      border:`1px solid ${c}40`,borderRadius:3,padding:"1px 4px",marginLeft:4}}>
-      {high?"HIGH⚡":"MED~"}
-    </span>
-  );
-}
-
 // ── Stat card (overview grid) ─────────────────────────────────────────────────
 function StatCard({cat, val, pct}) {
-  const lb  = LOWER_BETTER.has(cat);
-  const ep  = lb && pct!=null ? 1-pct : pct;
+  const lb    = LOWER_BETTER.has(cat);
+  const ep    = lb && pct!=null ? 1-pct : pct;
   const color = pctColor(ep);
-  const ord = ordinal(ep);
+  const ord   = ordinal(ep);
   return (
     <div style={{background:"#111118",border:"1px solid #1a1a2e",borderRadius:8,
       padding:"10px 12px",display:"flex",flexDirection:"column",gap:4}}>
@@ -145,69 +148,123 @@ function StatCard({cat, val, pct}) {
         <div style={{height:3,background:"#1a1a2e",borderRadius:2,marginBottom:3,overflow:"hidden"}}>
           <div style={{height:"100%",width:`${(ep??0)*100}%`,background:color,borderRadius:2,transition:"width 0.5s"}}/>
         </div>
-        <div style={{fontSize:9,color:ord?color:"#333",fontFamily:"'DM Mono',monospace"}}>
-          {ord||"—"}
-        </div>
+        <div style={{fontSize:9,color:ord?color:"#333",fontFamily:"'DM Mono',monospace"}}>{ord||"—"}</div>
       </div>
     </div>
   );
 }
 
-// ── System table ──────────────────────────────────────────────────────────────
-function SystemTable({player,per600,cats}) {
-  const available=SYSTEMS.filter(s=>player.systems?.[s]);
-  if (!available.length) return <div style={{color:"#444",fontSize:12}}>No system data.</div>;
+// ── Systems comparison — horizontal bars per stat ─────────────────────────────
+function SystemsPanel({player, per600}) {
+  const cats = player.type==="hitter" ? HIT_FANTASY : PIT_FANTASY;
+  const available = SYSTEMS.filter(s => player.systems?.[s]);
+  if (!available.length) return <div style={{color:"#444",fontSize:12,padding:8}}>No system data.</div>;
+
   return (
-    <div style={{overflowX:"auto"}}>
-      <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,fontFamily:"'DM Mono',monospace"}}>
-        <thead>
-          <tr>
-            <th style={{textAlign:"left",padding:"4px 8px",color:"#333",fontWeight:600,fontSize:10}}>System</th>
-            {cats.map(c=><th key={c} style={{textAlign:"right",padding:"4px 5px",color:"#444",fontWeight:600,fontSize:10}}>{c}</th>)}
-          </tr>
-        </thead>
-        <tbody>
-          {available.map(sys=>{
-            const s=player.systems[sys];
-            return (
-              <tr key={sys} style={{borderTop:"1px solid #1a1a2e"}}>
-                <td style={{padding:"5px 8px"}}>
-                  <div style={{display:"flex",alignItems:"center",gap:5}}>
-                    <span style={{width:6,height:6,borderRadius:"50%",background:SYS_COLORS[sys],display:"inline-block"}}/>
-                    <span style={{color:"#777",fontSize:10}}>{sys}</span>
+    <div style={{display:"flex",flexDirection:"column",gap:16}}>
+      {cats.map(cat => {
+        const lb = LOWER_BETTER.has(cat);
+        const pa = player.consensus?.PA || 1;
+
+        // Gather values from each system
+        const sysVals = available.map(sys => {
+          const raw = player.systems[sys]?.[cat];
+          const val = per600 ? scaleTo600(raw,cat,pa) : raw;
+          return {sys, val};
+        }).filter(d => d.val != null);
+
+        const consensus = player.consensus?.[cat];
+        const consVal   = per600 ? scaleTo600(consensus,cat,pa) : consensus;
+
+        if (!sysVals.length && consVal==null) return null;
+
+        // Range for bar scaling
+        const allVals = sysVals.map(d=>d.val);
+        if (consVal!=null) allVals.push(consVal);
+        const min = Math.min(...allVals);
+        const max = Math.max(...allVals);
+        const range = max - min || 0.001;
+
+        // Percentile for color
+        const pct  = player.percentiles?.[cat];
+        const ep   = lb && pct!=null ? 1-pct : pct;
+        const color = pctColor(ep);
+
+        return (
+          <div key={cat}>
+            {/* Stat header */}
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:8}}>
+              <span style={{fontSize:11,fontWeight:700,color:"#888",textTransform:"uppercase",letterSpacing:"0.6px"}}>{cat}</span>
+              <div style={{display:"flex",gap:10,alignItems:"center"}}>
+                {pct!=null && <span style={{fontSize:10,color,fontFamily:"'DM Mono',monospace"}}>{ordinal(ep)}</span>}
+                <span style={{fontSize:13,fontWeight:700,color,fontFamily:"'DM Mono',monospace"}}>{fmtStat(consVal,cat)}</span>
+              </div>
+            </div>
+
+            {/* System bars */}
+            <div style={{display:"flex",flexDirection:"column",gap:5}}>
+              {sysVals.map(({sys,val}) => {
+                const barPct = lb
+                  ? 1 - (val - min) / range
+                  : (val - min) / range;
+                // Normalize bar width — center at 50% when range is small
+                const barW = range < 0.001 ? 0.5 : Math.max(0.05, Math.min(1, (val-min)/range));
+                const sysColor = SYS_COLORS[sys];
+                return (
+                  <div key={sys} style={{display:"flex",alignItems:"center",gap:8}}>
+                    <div style={{width:80,fontSize:10,color:"#555",display:"flex",alignItems:"center",gap:5,flexShrink:0}}>
+                      <span style={{width:6,height:6,borderRadius:"50%",background:sysColor,display:"inline-block",flexShrink:0}}/>
+                      <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sys}</span>
+                    </div>
+                    <div style={{flex:1,height:6,background:"#1a1a2e",borderRadius:3,overflow:"hidden"}}>
+                      <div style={{
+                        height:"100%",
+                        width:`${barW*100}%`,
+                        background:sysColor,
+                        borderRadius:3,
+                        opacity:0.85,
+                        transition:"width 0.4s"
+                      }}/>
+                    </div>
+                    <div style={{width:42,textAlign:"right",fontSize:11,
+                      color:sysColor,fontFamily:"'DM Mono',monospace",fontWeight:600,flexShrink:0}}>
+                      {fmtStat(val,cat)}
+                    </div>
                   </div>
-                </td>
-                {cats.map(cat=>{
-                  const raw=s?.[cat], pa=s?.PA||player.consensus?.PA||1;
-                  const val=per600?scaleTo600(raw,cat,pa):raw;
-                  return <td key={cat} style={{textAlign:"right",padding:"5px 5px",color:val==null?"#2a2a3e":"#bbb",fontSize:11}}>{fmtStat(val,cat)}</td>;
-                })}
-              </tr>
-            );
-          })}
-          <tr style={{borderTop:"2px solid #2a2a3e"}}>
-            <td style={{padding:"5px 8px",color:"#4A9EFF",fontWeight:700,fontSize:10}}>AVG</td>
-            {cats.map(cat=>{
-              const raw=player.consensus?.[cat], pa=player.consensus?.PA||1;
-              const val=per600?scaleTo600(raw,cat,pa):raw;
-              const cv=player.disagreement?.[cat];
-              return (
-                <td key={cat} style={{textAlign:"right",padding:"5px 5px",fontWeight:700}}>
-                  <span style={{color:"#4A9EFF",fontFamily:"'DM Mono',monospace",fontSize:11}}>{fmtStat(val,cat)}</span>
-                  <DisBadge cv={cv}/>
-                </td>
-              );
-            })}
-          </tr>
-        </tbody>
-      </table>
+                );
+              })}
+
+              {/* Consensus avg bar */}
+              {consVal!=null && (
+                <div style={{display:"flex",alignItems:"center",gap:8,marginTop:2,
+                  paddingTop:5,borderTop:"1px solid #1a1a2e"}}>
+                  <div style={{width:80,fontSize:10,color:"#4A9EFF",fontWeight:700,flexShrink:0}}>Consensus</div>
+                  <div style={{flex:1,height:6,background:"#1a1a2e",borderRadius:3,overflow:"hidden"}}>
+                    <div style={{
+                      height:"100%",
+                      width:`${Math.max(0.05,Math.min(1,(consVal-min)/range))*100}%`,
+                      background:color,
+                      borderRadius:3,
+                      transition:"width 0.4s"
+                    }}/>
+                  </div>
+                  <div style={{width:42,textAlign:"right",fontSize:11,
+                    color,fontFamily:"'DM Mono',monospace",fontWeight:700,flexShrink:0}}>
+                    {fmtStat(consVal,cat)}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
 
 // ── Disagreement panel ────────────────────────────────────────────────────────
 function DisagreementPanel({player}) {
-  const cats=player.type==="hitter"?HIT_CATS:PIT_CATS;
+  const cats = player.type==="hitter" ? HIT_CATS : PIT_CATS;
   return (
     <div>
       {cats.map(cat=>{
@@ -232,67 +289,124 @@ function DisagreementPanel({player}) {
 }
 
 // ── Skills panel ──────────────────────────────────────────────────────────────
-function SkillsPanel({player}) {
+// Build pool percentiles for skill stats from historical data
+function buildSkillPercentiles(allPlayers, type) {
+  // This runs client-side — gather all latest-season values per skill
+  const skills = type==="hitter" ? HIT_SKILLS : PIT_SKILLS;
+  const pctFns = {};
+  skills.forEach(skill => {
+    const vals = [];
+    allPlayers.filter(p=>p.type===type).forEach(p=>{
+      const hist = p.history||[];
+      const latest = hist.filter(h=>h[skill.key]!=null).sort((a,b)=>(b.season||0)-(a.season||0))[0];
+      if (latest) vals.push(latest[skill.key]);
+    });
+    vals.sort((a,b)=>a-b);
+    pctFns[skill.key] = v => {
+      if (v==null||!vals.length) return null;
+      return vals.filter(x=>x<=v).length / vals.length;
+    };
+  });
+  return pctFns;
+}
+
+function SkillsPanel({player, skillPctFns}) {
   const skills  = player.type==="hitter" ? HIT_SKILLS : PIT_SKILLS;
   const history = player.history||[];
   const seasons = [...new Set(history.map(h=>h.season).filter(Boolean))].sort();
+
+  // Limit to 4 seasons max to fit
+  const displaySeasons = seasons.slice(-4);
+
   return (
-    <div style={{background:"#0f0f18",border:"1px solid #1a1a2e",borderRadius:8,padding:14}}>
-      <div style={{fontSize:9,color:"#444",fontWeight:700,marginBottom:12,
+    <div style={{background:"#0f0f18",border:"1px solid #1a1a2e",borderRadius:8,padding:12}}>
+      <div style={{fontSize:9,color:"#444",fontWeight:700,marginBottom:10,
         textTransform:"uppercase",letterSpacing:"0.8px"}}>Skill Metrics — Year over Year</div>
-      <div style={{display:"grid",
-        gridTemplateColumns:`110px 60px repeat(${Math.max(seasons.length,1)}, 52px)`,
-        gap:4,marginBottom:6,paddingBottom:6,borderBottom:"1px solid #1a1a2e"}}>
-        <span style={{fontSize:9,color:"#333",fontWeight:700}}>Stat</span>
-        <span style={{fontSize:9,color:"#333",fontWeight:700,textAlign:"center"}}>Trend</span>
-        {seasons.map(s=><span key={s} style={{fontSize:9,color:"#444",fontWeight:700,textAlign:"right"}}>{s}</span>)}
-      </div>
-      {skills.map(skill=>{
-        const vals=seasons.map(s=>{
-          const h=history.find(h=>h.season===s);
-          return h?h[skill.key]??null:null;
-        });
-        const hasData=vals.some(v=>v!=null);
-        return (
-          <div key={skill.key} style={{display:"grid",
-            gridTemplateColumns:`110px 60px repeat(${Math.max(seasons.length,1)}, 52px)`,
-            gap:4,padding:"4px 0",borderBottom:"1px solid #0f0f1a",alignItems:"center"}}>
-            <span style={{fontSize:11,color:"#666"}}>{skill.label}</span>
-            <span style={{textAlign:"center"}}>
-              {hasData?<Sparkline values={vals} higherBetter={skill.higherBetter}/>:<span style={{color:"#2a2a3e",fontSize:10}}>—</span>}
-            </span>
-            {vals.map((v,i)=>{
-              const isLatest=i===vals.length-1;
-              const prev=i>0?vals[i-1]:null;
-              const improved=v!=null&&prev!=null&&(skill.higherBetter?v>prev:v<prev);
-              const declined=v!=null&&prev!=null&&(skill.higherBetter?v<prev:v>prev);
-              return (
-                <span key={i} style={{textAlign:"right",fontFamily:"'DM Mono',monospace",fontSize:10,
-                  fontWeight:isLatest?700:400,
-                  color:v==null?"#2a2a3e":isLatest?(improved?"#00C896":declined?"#F87171":"#ddd"):"#555"}}>
-                  {fmtSkill(v,skill.fmt)}
-                </span>
-              );
-            })}
+
+      {displaySeasons.length===0 ? (
+        <div style={{color:"#333",fontSize:12,textAlign:"center",padding:20}}>No historical skill data</div>
+      ) : (
+        <>
+          {/* Header */}
+          <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:6,
+            paddingBottom:5,borderBottom:"1px solid #1a1a2e"}}>
+            <div style={{width:78,flexShrink:0,fontSize:9,color:"#333",fontWeight:700}}>Stat</div>
+            <div style={{width:58,flexShrink:0,fontSize:9,color:"#333",fontWeight:700,textAlign:"center"}}>Trend</div>
+            {displaySeasons.map(s=>(
+              <div key={s} style={{flex:1,fontSize:9,color:"#444",fontWeight:700,textAlign:"right"}}>{s}</div>
+            ))}
           </div>
-        );
-      })}
-      {seasons.length===0&&<div style={{color:"#333",fontSize:12,textAlign:"center",padding:20}}>No historical skill data</div>}
+
+          {/* Rows */}
+          {skills.map(skill=>{
+            const vals = displaySeasons.map(s=>{
+              const h=history.find(h=>h.season===s);
+              return h ? (h[skill.key]??null) : null;
+            });
+            const hasData = vals.some(v=>v!=null);
+            const latest  = vals[vals.length-1];
+            const rawPct  = skillPctFns?.[skill.key]?.(latest);
+            const latestColor = skillPctColor(rawPct, skill.higherBetter);
+
+            return (
+              <div key={skill.key} style={{display:"flex",alignItems:"center",gap:4,
+                padding:"3px 0",borderBottom:"1px solid #0f0f1a"}}>
+                <div style={{width:78,flexShrink:0,fontSize:10,color:"#666",
+                  overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{skill.label}</div>
+                <div style={{width:58,flexShrink:0,textAlign:"center"}}>
+                  {hasData
+                    ? <Sparkline values={vals} higherBetter={skill.higherBetter} pct2025={rawPct}/>
+                    : <span style={{color:"#2a2a3e",fontSize:10}}>—</span>
+                  }
+                </div>
+                {vals.map((v,i)=>{
+                  const isLatest = i===vals.length-1;
+                  const color = isLatest ? latestColor : "#555";
+                  return (
+                    <div key={i} style={{flex:1,textAlign:"right",
+                      fontFamily:"'DM Mono',monospace",fontSize:10,
+                      fontWeight:isLatest?700:400,color:v==null?"#2a2a3e":color}}>
+                      {fmtSkill(v,skill.fmt)}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+
+          {/* Legend */}
+          <div style={{marginTop:10,display:"flex",gap:10,flexWrap:"wrap"}}>
+            {[
+              {color:"#00C896",label:"Top 5%"},
+              {color:"#34D399",label:"Top 10%"},
+              {color:"#6EE7B7",label:"Top 25%"},
+              {color:"#FCA5A5",label:"Bot 25%"},
+              {color:"#F87171",label:"Bot 10%"},
+              {color:"#EF4444",label:"Bot 5%"},
+            ].map(({color,label})=>(
+              <div key={label} style={{display:"flex",alignItems:"center",gap:4}}>
+                <div style={{width:8,height:8,borderRadius:2,background:color}}/>
+                <span style={{fontSize:9,color:"#555"}}>{label}</span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }
 
 // ── Historical panel ──────────────────────────────────────────────────────────
-function HistoricalPanel({player}) {
+function HistoricalPanel({player, skillPctFns}) {
   const history  = player.history||[];
   const seasons  = [...new Set(history.map(h=>h.season).filter(Boolean))].sort();
-  const statKeys = player.type==="hitter"?HIT_HIST_STATS:PIT_HIST_STATS;
+  const statKeys = player.type==="hitter" ? HIT_HIST_STATS : PIT_HIST_STATS;
   return (
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
-      {seasons.length===0?(
+      {seasons.length===0 ? (
         <div style={{background:"#0f0f18",border:"1px solid #1a1a2e",borderRadius:8,
           padding:20,textAlign:"center",color:"#333",fontSize:12}}>No historical data</div>
-      ):(
+      ) : (
         <div style={{background:"#0f0f18",border:"1px solid #1a1a2e",borderRadius:8,padding:14}}>
           <div style={{fontSize:9,color:"#444",fontWeight:700,marginBottom:12,
             textTransform:"uppercase",letterSpacing:"0.8px"}}>Season Stats (2022–2025)</div>
@@ -322,18 +436,17 @@ function HistoricalPanel({player}) {
           </div>
         </div>
       )}
-      <SkillsPanel player={player}/>
+      <SkillsPanel player={player} skillPctFns={skillPctFns}/>
     </div>
   );
 }
 
 // ── Player panel ──────────────────────────────────────────────────────────────
-function PlayerPanel({player,allPlayers,per600,showPct,onClose,onNavigate}) {
+function PlayerPanel({player,allPlayers,per600,showPct,onClose,onNavigate,skillPctFns}) {
   const [panelTab,setPanelTab]=useState("overview");
   if (!player) return null;
   const idx  = allPlayers.findIndex(p=>p.id===player.id);
-  const cats = player.type==="hitter"?HIT_CATS:PIT_CATS;
-  const overviewCats = player.type==="hitter"?HIT_OVERVIEW:PIT_OVERVIEW;
+  const overviewCats = player.type==="hitter" ? HIT_OVERVIEW : PIT_OVERVIEW;
   const flags= player.flags??[];
   const war  = player.consensus?.WAR ?? player.history?.slice(-1)[0]?.WAR ?? null;
 
@@ -355,7 +468,6 @@ function PlayerPanel({player,allPlayers,per600,showPct,onClose,onNavigate}) {
         <div style={{flex:1,minWidth:0}}>
           <div style={{fontSize:16,fontWeight:700,color:"#f0f0f0",letterSpacing:"-0.3px",
             overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{player.name}</div>
-          {/* Team · Pos · WAR */}
           <div style={{fontSize:12,color:"#666",marginTop:4,display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
             <span>{player.team}</span>
             <span style={{color:"#2a2a3e"}}>·</span>
@@ -375,7 +487,6 @@ function PlayerPanel({player,allPlayers,per600,showPct,onClose,onNavigate}) {
               </span>
             ))}
           </div>
-          {/* PA / IP · systems count */}
           <div style={{fontSize:10,color:"#444",marginTop:3,fontFamily:"'DM Mono',monospace"}}>
             {player.type==="hitter"
               ? `${Math.round(player.consensus?.PA||0)} PA`
@@ -397,7 +508,7 @@ function PlayerPanel({player,allPlayers,per600,showPct,onClose,onNavigate}) {
         </div>
       </div>
 
-      {/* VAR + Z-Score */}
+      {/* VAR + Z */}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}}>
         {[["VAR",player.VAR,"#4A9EFF"],["Z-Score",player.zScore,"#A78BFA"]].map(([lbl,val,c])=>(
           <div key={lbl} style={{background:c+"10",border:`1px solid ${c}25`,borderRadius:8,
@@ -419,7 +530,6 @@ function PlayerPanel({player,allPlayers,per600,showPct,onClose,onNavigate}) {
         {PT("history","Historical")}
       </div>
 
-      {/* Overview — stat cards grid */}
       {panelTab==="overview"&&(
         <div>
           <div style={{fontSize:9,color:"#444",fontWeight:700,marginBottom:10,
@@ -438,8 +548,12 @@ function PlayerPanel({player,allPlayers,per600,showPct,onClose,onNavigate}) {
       )}
 
       {panelTab==="systems"&&(
-        <div style={{background:"#0f0f18",border:"1px solid #1a1a2e",borderRadius:8,padding:14}}>
-          <SystemTable player={player} per600={per600} cats={cats}/>
+        <div>
+          <div style={{fontSize:9,color:"#444",fontWeight:700,marginBottom:12,
+            textTransform:"uppercase",letterSpacing:"0.8px"}}>
+            Fantasy Stats by System {per600?"(per 600 PA)":""}
+          </div>
+          <SystemsPanel player={player} per600={per600}/>
         </div>
       )}
 
@@ -451,8 +565,8 @@ function PlayerPanel({player,allPlayers,per600,showPct,onClose,onNavigate}) {
         </div>
       )}
 
-      {panelTab==="skills"&&<SkillsPanel player={player}/>}
-      {panelTab==="history"&&<HistoricalPanel player={player}/>}
+      {panelTab==="skills"&&<SkillsPanel player={player} skillPctFns={skillPctFns}/>}
+      {panelTab==="history"&&<HistoricalPanel player={player} skillPctFns={skillPctFns}/>}
     </div>
   );
 }
@@ -502,13 +616,11 @@ function PlayerRow({player,rank,isSelected,onSelect,showPct,per600}) {
         transition:"all 0.1s"}}>
 
       <span style={{width:22,fontSize:10,color:"#2a2a3e",fontFamily:"'DM Mono',monospace",flexShrink:0}}>{rank}</span>
-
       <div style={{width:26,height:26,borderRadius:4,background:"#1a1a2e",border:"1px solid #2a2a3e",
         display:"flex",alignItems:"center",justifyContent:"center",
         fontSize:8,fontWeight:700,color:"#888",flexShrink:0}}>
         {(player.pos||"?").slice(0,3)}
       </div>
-
       <div style={{minWidth:140,maxWidth:180,flexShrink:0}}>
         <div style={{display:"flex",alignItems:"center",gap:4}}>
           <span style={{fontSize:13,fontWeight:600,color:"#ddd",
@@ -519,7 +631,6 @@ function PlayerRow({player,rank,isSelected,onSelect,showPct,per600}) {
         </div>
         <div style={{fontSize:10,color:"#444"}}>{player.team}</div>
       </div>
-
       <div style={{display:"flex",gap:8,flexShrink:0}}>
         {cols.map(cat=>{
           const raw=c[cat];
@@ -540,14 +651,12 @@ function PlayerRow({player,rank,isSelected,onSelect,showPct,per600}) {
           );
         })}
       </div>
-
       <div style={{minWidth:34,textAlign:"right",flexShrink:0}}>
         <div style={{color:disColor,fontWeight:600,fontFamily:"'DM Mono',monospace",fontSize:11}}>
           {(dis*100).toFixed(0)}%
         </div>
         {showPct&&<div style={{fontSize:9,color:"#333",fontFamily:"'DM Mono',monospace"}}>dis</div>}
       </div>
-
       <div style={{minWidth:36,textAlign:"right",flexShrink:0}}>
         <div style={{color:varColor,fontWeight:700,fontFamily:"'DM Mono',monospace",fontSize:11}}>
           {player.VAR>0?"+":""}{player.VAR}
@@ -608,6 +717,11 @@ export default function App() {
   },[]);
 
   const players = data?.players??[];
+
+  // Build skill percentile functions from all players' historical data
+  const hitterSkillPcts  = useMemo(()=>buildSkillPercentiles(players,"hitter"),  [players]);
+  const pitcherSkillPcts = useMemo(()=>buildSkillPercentiles(players,"pitcher"), [players]);
+  const getSkillPcts = p => p.type==="hitter" ? hitterSkillPcts : pitcherSkillPcts;
 
   const teams = useMemo(()=>{
     const t=[...new Set(players.map(p=>p.team).filter(Boolean))].sort();
@@ -741,6 +855,7 @@ export default function App() {
       <div style={{flex:1,minWidth:0}}>{children}</div>
       {selected&&<PlayerPanel player={selected} allPlayers={filtered}
         per600={per600} showPct={showPct}
+        skillPctFns={getSkillPcts(selected)}
         onClose={()=>setSelected(null)} onNavigate={handleNavigate}/>}
     </div>
   );
@@ -756,15 +871,12 @@ export default function App() {
         select{appearance:none;}
         select option{background:#0d0d15;color:#ccc;}
       `}</style>
-
       <div style={{borderBottom:"1px solid #131320",padding:"13px 24px 0",background:"#080810",
         position:"sticky",top:0,zIndex:100}}>
         <div style={{maxWidth:1600,margin:"0 auto"}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
             <div style={{display:"flex",alignItems:"baseline",gap:12}}>
-              <span style={{fontSize:17,fontWeight:700,color:"#f0f0f0",letterSpacing:"-0.4px"}}>
-                ⚾ Fantasy Baseball 2026
-              </span>
+              <span style={{fontSize:17,fontWeight:700,color:"#f0f0f0",letterSpacing:"-0.4px"}}>⚾ Fantasy Baseball 2026</span>
               <span style={{fontSize:10,color:"#2a2a3e",fontFamily:"'DM Mono',monospace"}}>
                 {players.length} players · {filtered.length} shown
                 {data?.generated&&` · Updated ${new Date(data.generated).toLocaleDateString()}`}
@@ -778,7 +890,6 @@ export default function App() {
           </div>
         </div>
       </div>
-
       <div style={{maxWidth:1600,margin:"0 auto",padding:"14px 24px"}}>
         <Controls/>
         {tab==="players"&&<WithPanel><PlayerList list={filtered}/></WithPanel>}
