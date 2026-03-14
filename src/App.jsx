@@ -1,26 +1,24 @@
 import { useState, useEffect, useMemo } from "react";
 
 const LEAGUE_SIZE  = 12;
-const MY_PICK      = 10;
-const ROUNDS       = 28;
 const ROSTER_SLOTS = { C:1,"1B":1,"2B":1,SS:1,"3B":1,OF:3,UTIL:1,SP:5,RP:3,P:2,BN:7 };
-
 const HIT_CATS = ["R","HR","RBI","SB","OBP","H","TB"];
 const PIT_CATS = ["W","K","ERA","WHIP","SV","HLD","QS"];
 const LOWER_BETTER = new Set(["ERA","WHIP"]);
-
 const SYSTEMS = ["ATC","ZiPS","Steamer","THE BAT","Depth Charts"];
 const SYS_COLORS = {
   "ATC":"#4A9EFF","ZiPS":"#A78BFA","Steamer":"#00C896",
   "THE BAT":"#FB923C","Depth Charts":"#F472B6",
 };
 const TIER_COLORS = { 1:"#00C896",2:"#4A9EFF",3:"#A78BFA",4:"#6B7280",5:"#F87171" };
-const POSITIONS_HIT = ["All","C","1B","2B","3B","SS","OF","DH","UTIL"];
-const POSITIONS_PIT = ["All","SP","RP"];
+
+// hitter columns shown in the table
+const HIT_DISPLAY = ["G","HR","R","RBI","SB","AVG","OBP","SLG","wOBA","wRC+"];
+const PIT_DISPLAY = ["G","W","K","ERA","WHIP","SV","HLD","QS"];
 
 function pctColor(pct, lowerBetter=false) {
-  const ep = lowerBetter && pct != null ? 1-pct : pct;
-  if (ep==null) return "#444";
+  const ep = lowerBetter && pct!=null ? 1-pct : pct;
+  if (ep==null) return "#555";
   if (ep>=.90) return "#00C896";
   if (ep>=.70) return "#4A9EFF";
   if (ep>=.40) return "#9CA3AF";
@@ -31,52 +29,38 @@ function pctColor(pct, lowerBetter=false) {
 function fmt(val, cat) {
   if (val==null) return "—";
   if (["OBP","AVG","SLG","wOBA","ERA","WHIP"].includes(cat)) return Number(val).toFixed(3);
-  if (cat === "wRC+") return Math.round(val);
+  if (cat==="wRC+") return Math.round(val);
   return Math.round(val*10)/10;
 }
 
 function scaleTo600(val, cat, pa) {
   if (val==null||!pa) return null;
-  if (!["R","HR","RBI","SB","H","TB","BB","SO"].includes(cat)) return val;
+  if (!["R","HR","RBI","SB","H","TB","BB","SO","W","K","SV","HLD","QS"].includes(cat)) return val;
   return Math.round((val/pa)*600*10)/10;
 }
 
-function getMyPicks(leagueSize, myPick, rounds) {
-  return Array.from({length:rounds},(_,i)=>{
-    const round=i+1, isEven=round%2===0;
-    const pickInRound=isEven?leagueSize-myPick+1:myPick;
-    return {round,pickInRound,overall:(round-1)*leagueSize+pickInRound};
-  });
+function ordinal(pct) {
+  if (pct==null) return null;
+  const n = Math.round(pct*100);
+  if (n>=90) return n+"th";
+  const s = ["th","st","nd","rd"];
+  const v = n%100;
+  return n+(s[(v-20)%10]||s[v]||s[0]);
 }
 
-function PctBar({val,pct,cat}) {
-  const lb=LOWER_BETTER.has(cat);
-  const ep=lb?(pct!=null?1-pct:null):pct;
-  const color=pctColor(ep);
-  return (
-    <div style={{marginBottom:7}}>
-      <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
-        <span style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:"0.5px"}}>{cat}</span>
-        <span style={{fontSize:12,fontWeight:700,color,fontFamily:"'DM Mono',monospace"}}>{fmt(val,cat)}</span>
-      </div>
-      <div style={{height:3,background:"#1a1a2e",borderRadius:2,overflow:"hidden"}}>
-        <div style={{height:"100%",width:`${(ep??0)*100}%`,background:color,borderRadius:2,transition:"width 0.5s"}}/>
-      </div>
-    </div>
-  );
-}
-
+// ── Disagreement badge ────────────────────────────────────────────────────────
 function DisBadge({cv}) {
   if (!cv||cv<0.12) return null;
   const high=cv>0.25, c=high?"#F87171":"#FB923C";
   return (
     <span style={{fontSize:9,fontWeight:700,color:c,background:c+"20",
-      border:`1px solid ${c}40`,borderRadius:3,padding:"1px 4px",letterSpacing:"0.5px",marginLeft:4}}>
+      border:`1px solid ${c}40`,borderRadius:3,padding:"1px 4px",marginLeft:4}}>
       {high?"HIGH⚡":"MED~"}
     </span>
   );
 }
 
+// ── System comparison table ───────────────────────────────────────────────────
 function SystemTable({player,per600,cats}) {
   const available=SYSTEMS.filter(s=>player.systems?.[s]);
   if (!available.length) return <div style={{color:"#444",fontSize:12}}>No system data.</div>;
@@ -128,6 +112,7 @@ function SystemTable({player,per600,cats}) {
   );
 }
 
+// ── Disagreement panel ────────────────────────────────────────────────────────
 function DisagreementPanel({player}) {
   const cats=player.type==="hitter"?HIT_CATS:PIT_CATS;
   return (
@@ -153,7 +138,8 @@ function DisagreementPanel({player}) {
   );
 }
 
-function PlayerPanel({player,allPlayers,per600,onClose,onNavigate}) {
+// ── Player detail panel ───────────────────────────────────────────────────────
+function PlayerPanel({player,allPlayers,per600,showPct,onClose,onNavigate}) {
   const [panelTab,setPanelTab]=useState("overview");
   if (!player) return null;
   const tc=TIER_COLORS[player.tier]??"#6B7280";
@@ -200,7 +186,6 @@ function PlayerPanel({player,allPlayers,per600,onClose,onNavigate}) {
               color:"#555",cursor:"pointer",padding:"3px 9px",fontSize:13}}>×</button>
         </div>
       </div>
-
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}}>
         {[["VAR",player.VAR,tc],["Z-Score",player.zScore,"#A78BFA"]].map(([lbl,val,c])=>(
           <div key={lbl} style={{background:c+"10",border:`1px solid ${c}25`,borderRadius:8,
@@ -212,12 +197,9 @@ function PlayerPanel({player,allPlayers,per600,onClose,onNavigate}) {
           </div>
         ))}
       </div>
-
       <div style={{display:"flex",gap:2,marginBottom:14,background:"#0f0f18",borderRadius:7,padding:3}}>
-        {PT("overview","Overview")}{PT("systems","Systems")}
-        {PT("disagree","Disagreement")}{PT("history","History")}
+        {PT("overview","Overview")}{PT("systems","Systems")}{PT("disagree","Disagreement")}
       </div>
-
       {panelTab==="overview"&&(
         <div style={{background:"#0f0f18",border:"1px solid #1a1a2e",borderRadius:8,padding:14}}>
           <div style={{fontSize:9,color:"#444",fontWeight:700,marginBottom:10,
@@ -227,7 +209,24 @@ function PlayerPanel({player,allPlayers,per600,onClose,onNavigate}) {
           {cats.map(cat=>{
             const raw=player.consensus?.[cat], pa=player.consensus?.PA||1;
             const val=per600?scaleTo600(raw,cat,pa):raw;
-            return <PctBar key={cat} val={val} pct={player.percentiles?.[cat]} cat={cat}/>;
+            const pct=player.percentiles?.[cat];
+            const lb=LOWER_BETTER.has(cat);
+            const ep=lb&&pct!=null?1-pct:pct;
+            const color=pctColor(ep);
+            return (
+              <div key={cat} style={{marginBottom:8}}>
+                <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
+                  <span style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:"0.5px"}}>{cat}</span>
+                  <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                    {pct!=null&&<span style={{fontSize:10,color,fontFamily:"'DM Mono',monospace"}}>{ordinal(ep)}</span>}
+                    <span style={{fontSize:12,fontWeight:700,color,fontFamily:"'DM Mono',monospace"}}>{fmt(val,cat)}</span>
+                  </div>
+                </div>
+                <div style={{height:3,background:"#1a1a2e",borderRadius:2,overflow:"hidden"}}>
+                  <div style={{height:"100%",width:`${(ep??0)*100}%`,background:color,borderRadius:2,transition:"width 0.5s"}}/>
+                </div>
+              </div>
+            );
           })}
         </div>
       )}
@@ -243,87 +242,67 @@ function PlayerPanel({player,allPlayers,per600,onClose,onNavigate}) {
           <DisagreementPanel player={player}/>
         </div>
       )}
-      {panelTab==="history"&&(
-        <div style={{background:"#0f0f18",border:"1px solid #1a1a2e",borderRadius:8,padding:14}}>
-          <div style={{fontSize:9,color:"#444",fontWeight:700,marginBottom:10,
-            textTransform:"uppercase",letterSpacing:"0.8px"}}>Historical Stats (2022–2025)</div>
-          {(!player.history||player.history.length===0)?(
-            <div style={{color:"#333",fontSize:12,textAlign:"center",padding:20}}>No historical data</div>
-          ):(
-            <div style={{overflowX:"auto"}}>
-              <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,fontFamily:"'DM Mono',monospace"}}>
-                <thead>
-                  <tr>
-                    <th style={{textAlign:"left",padding:"3px 6px",color:"#444",fontSize:10}}>Season</th>
-                    {Object.keys(player.history[0]).filter(k=>k!=="season").slice(0,7).map(k=>(
-                      <th key={k} style={{textAlign:"right",padding:"3px 5px",color:"#444",fontSize:10}}>{k}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {player.history.map((h,i)=>(
-                    <tr key={i} style={{borderTop:"1px solid #1a1a2e"}}>
-                      <td style={{padding:"4px 6px",color:"#4A9EFF",fontWeight:700}}>{h.season}</td>
-                      {Object.entries(h).filter(([k])=>k!=="season").slice(0,7).map(([k,v])=>(
-                        <td key={k} style={{textAlign:"right",padding:"4px 5px",color:"#bbb"}}>
-                          {v!=null?(typeof v==="number"?fmt(v,k):v):"—"}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }
 
-// ── Stat cell ─────────────────────────────────────────────────────────────────
-function StatCell({val, cat, pct}) {
-  const lb  = LOWER_BETTER.has(cat);
-  const ep  = lb && pct != null ? 1-pct : pct;
+// ── Column headers ────────────────────────────────────────────────────────────
+function ColumnHeaders({cols, showPct}) {
   return (
-    <div style={{textAlign:"right",minWidth:36}}>
-      <div style={{color:pctColor(ep),fontWeight:600,fontFamily:"'DM Mono',monospace",fontSize:11}}>
-        {fmt(val,cat)}
+    <div style={{display:"flex",alignItems:"center",gap:6,padding:"5px 12px",
+      borderBottom:"1px solid #1a1a2e",marginBottom:4}}>
+      <span style={{width:22,flexShrink:0}}/>
+      <span style={{width:26,flexShrink:0}}/>
+      <div style={{minWidth:140,maxWidth:180,flexShrink:0,fontSize:9,color:"#444",
+        fontWeight:700,textTransform:"uppercase",letterSpacing:"0.5px"}}>
+        Name / Team
       </div>
-      <div style={{color:"#2a2a3e",fontSize:9}}>{cat}</div>
+      <div style={{display:"flex",gap:8,flexShrink:0}}>
+        {cols.map(cat=>(
+          <div key={cat} style={{minWidth:36,textAlign:"right"}}>
+            <div style={{fontSize:9,color:"#555",fontWeight:700,
+              textTransform:"uppercase",letterSpacing:"0.4px"}}>{cat}</div>
+            {showPct&&<div style={{fontSize:8,color:"#333"}}>pct</div>}
+          </div>
+        ))}
+      </div>
+      <div style={{minWidth:34,textAlign:"right",flexShrink:0}}>
+        <div style={{fontSize:9,color:"#555",fontWeight:700,letterSpacing:"0.4px"}}>DIS</div>
+      </div>
+      <div style={{minWidth:36,textAlign:"right",flexShrink:0}}>
+        <div style={{fontSize:9,color:"#555",fontWeight:700,letterSpacing:"0.4px"}}>VAR</div>
+      </div>
     </div>
   );
 }
 
 // ── Player row ────────────────────────────────────────────────────────────────
-function PlayerRow({player,rank,isSelected,isDrafted,onSelect,onDraft,showDraftBtn,per600}) {
-  const tc    = TIER_COLORS[player.tier] ?? "#6B7280";
-  const flags = player.flags ?? [];
-  const c     = player.consensus ?? {};
-  const pa    = c.PA || 1;
-  const isHitter = player.type === "hitter";
-  const dis   = player.disagreement_score ?? 0;
-  const disColor = dis > 0.2 ? "#F87171" : dis > 0.1 ? "#FB923C" : "#9CA3AF";
+function PlayerRow({player,rank,isSelected,isDrafted,onSelect,showPct,per600}) {
+  const tc    = TIER_COLORS[player.tier]??"#6B7280";
+  const flags = player.flags??[];
+  const c     = player.consensus??{};
+  const pa    = c.PA||1;
+  const isHitter = player.type==="hitter";
+  const cols  = isHitter ? HIT_DISPLAY : PIT_DISPLAY;
+  const dis   = player.disagreement_score??0;
+  const disColor = dis>0.2?"#F87171":dis>0.1?"#FB923C":"#9CA3AF";
 
   return (
     <div onClick={()=>onSelect(player)}
-      style={{display:"flex",alignItems:"center",gap:6,padding:"7px 12px",
+      style={{display:"flex",alignItems:"center",gap:6,padding:"6px 12px",
         borderRadius:7,cursor:"pointer",marginBottom:2,
         background:isSelected?"#131320":isDrafted?"#0a0a0d":"#0d0d15",
         border:isSelected?`1px solid ${tc}45`:"1px solid #131320",
         opacity:isDrafted?0.4:1,transition:"all 0.1s"}}>
 
-      {/* Rank */}
       <span style={{width:22,fontSize:10,color:"#2a2a3e",fontFamily:"'DM Mono',monospace",flexShrink:0}}>{rank}</span>
 
-      {/* Pos badge */}
       <div style={{width:26,height:26,borderRadius:4,background:tc+"15",border:`1px solid ${tc}35`,
         display:"flex",alignItems:"center",justifyContent:"center",
         fontSize:8,fontWeight:700,color:tc,flexShrink:0}}>
         {(player.pos||"?").slice(0,3)}
       </div>
 
-      {/* Name + Team */}
       <div style={{minWidth:140,maxWidth:180,flexShrink:0}}>
         <div style={{display:"flex",alignItems:"center",gap:4}}>
           <span style={{fontSize:13,fontWeight:600,color:isDrafted?"#3a3a4a":"#ddd",
@@ -336,134 +315,50 @@ function PlayerRow({player,rank,isSelected,isDrafted,onSelect,onDraft,showDraftB
         <div style={{fontSize:10,color:"#444"}}>{player.team}</div>
       </div>
 
-      {/* Stats */}
-      <div style={{display:"flex",gap:8,flexShrink:0,flexWrap:"nowrap"}}>
-        {isHitter ? (
-          <>
-            <StatCell val={c.G}                                          cat="G"    pct={null}/>
-            <StatCell val={per600?scaleTo600(c.HR,  "HR",  pa):c.HR}    cat="HR"   pct={player.percentiles?.HR}/>
-            <StatCell val={per600?scaleTo600(c.R,   "R",   pa):c.R}     cat="R"    pct={player.percentiles?.R}/>
-            <StatCell val={per600?scaleTo600(c.RBI, "RBI", pa):c.RBI}   cat="RBI"  pct={player.percentiles?.RBI}/>
-            <StatCell val={per600?scaleTo600(c.SB,  "SB",  pa):c.SB}    cat="SB"   pct={player.percentiles?.SB}/>
-            <StatCell val={c.AVG}                                        cat="AVG"  pct={player.percentiles?.AVG}/>
-            <StatCell val={c.OBP}                                        cat="OBP"  pct={player.percentiles?.OBP}/>
-            <StatCell val={c.SLG}                                        cat="SLG"  pct={player.percentiles?.SLG}/>
-            <StatCell val={c.wOBA}                                       cat="wOBA" pct={player.percentiles?.wOBA}/>
-            <StatCell val={c["wRC+"]}                                    cat="wRC+" pct={player.percentiles?.["wRC+"]}/>
-          </>
-        ) : (
-          <>
-            <StatCell val={c.G}    cat="G"    pct={null}/>
-            <StatCell val={c.W}    cat="W"    pct={player.percentiles?.W}/>
-            <StatCell val={c.K}    cat="K"    pct={player.percentiles?.K}/>
-            <StatCell val={c.ERA}  cat="ERA"  pct={player.percentiles?.ERA}/>
-            <StatCell val={c.WHIP} cat="WHIP" pct={player.percentiles?.WHIP}/>
-            <StatCell val={c.SV}   cat="SV"   pct={player.percentiles?.SV}/>
-            <StatCell val={c.HLD}  cat="HLD"  pct={player.percentiles?.HLD}/>
-            <StatCell val={c.QS}   cat="QS"   pct={player.percentiles?.QS}/>
-          </>
-        )}
+      {/* Stat columns */}
+      <div style={{display:"flex",gap:8,flexShrink:0}}>
+        {cols.map(cat=>{
+          const raw = c[cat];
+          const val = per600 ? scaleTo600(raw,cat,pa) : raw;
+          const pct = player.percentiles?.[cat];
+          const lb  = LOWER_BETTER.has(cat);
+          const ep  = lb&&pct!=null ? 1-pct : pct;
+          const color = pctColor(ep);
+          return (
+            <div key={cat} style={{minWidth:36,textAlign:"right"}}>
+              <div style={{color,fontWeight:600,fontFamily:"'DM Mono',monospace",fontSize:11}}>
+                {fmt(val,cat)}
+              </div>
+              {showPct && (
+                <div style={{fontSize:9,color:ep!=null?color:"#333",fontFamily:"'DM Mono',monospace"}}>
+                  {ep!=null ? ordinal(ep) : "—"}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
 
-      {/* Disagreement score */}
-      <div style={{textAlign:"right",minWidth:34,flexShrink:0}}>
+      {/* DIS */}
+      <div style={{minWidth:34,textAlign:"right",flexShrink:0}}>
         <div style={{color:disColor,fontWeight:600,fontFamily:"'DM Mono',monospace",fontSize:11}}>
           {(dis*100).toFixed(0)}%
         </div>
-        <div style={{color:"#2a2a3e",fontSize:9}}>DIS</div>
+        {showPct&&<div style={{fontSize:9,color:"#333"}}>dis</div>}
       </div>
 
       {/* VAR */}
-      <div style={{textAlign:"right",minWidth:36,flexShrink:0}}>
+      <div style={{minWidth:36,textAlign:"right",flexShrink:0}}>
         <div style={{color:tc,fontWeight:700,fontFamily:"'DM Mono',monospace",fontSize:11}}>
           {player.VAR>0?"+":""}{player.VAR}
         </div>
-        <div style={{color:"#2a2a3e",fontSize:9}}>VAR</div>
+        {showPct&&<div style={{fontSize:9,color:"#333"}}>var</div>}
       </div>
-
-      {showDraftBtn&&(
-        <button onClick={e=>{e.stopPropagation();onDraft(player);}}
-          style={{padding:"3px 9px",borderRadius:5,fontSize:10,fontWeight:700,cursor:"pointer",
-            border:`1px solid ${isDrafted?"#F8717140":"#1e1e2e"}`,
-            background:isDrafted?"#F8717112":"#131320",
-            color:isDrafted?"#F87171":"#444",flexShrink:0}}>
-          {isDrafted?"✕":"＋"}
-        </button>
-      )}
     </div>
   );
 }
 
-// ── Scarcity meter ────────────────────────────────────────────────────────────
-function ScarcityMeter({scarcity,drafted,players}) {
-  const positions=Object.keys(scarcity||{}).filter(p=>["C","1B","2B","SS","3B","OF","SP","RP"].includes(p));
-  if (!positions.length) return null;
-  return (
-    <div style={{display:"grid",gridTemplateColumns:"repeat(8,1fr)",gap:6,marginBottom:18}}>
-      {positions.map(pos=>{
-        const s=scarcity[pos];
-        const gone=[...drafted].filter(id=>{
-          const p=players.find(x=>x.id===id);
-          return p&&(p.positions||[p.pos]).includes(pos);
-        }).length;
-        const remaining=Math.max((s?.total??0)-gone,0);
-        const pct=s?.total>0?remaining/s.total:1;
-        const color=pct>.6?"#00C896":pct>.3?"#FB923C":"#F87171";
-        return (
-          <div key={pos} style={{background:"#0d0d15",border:"1px solid #1a1a2e",borderRadius:7,padding:"8px 10px"}}>
-            <div style={{display:"flex",justifyContent:"space-between",marginBottom:5}}>
-              <span style={{fontSize:11,fontWeight:700,color:"#bbb"}}>{pos}</span>
-              <span style={{fontSize:10,color:"#333",fontFamily:"'DM Mono',monospace"}}>{remaining}</span>
-            </div>
-            <div style={{height:3,background:"#1a1a2e",borderRadius:2}}>
-              <div style={{height:"100%",width:`${pct*100}%`,background:color,borderRadius:2,transition:"width 0.4s"}}/>
-            </div>
-            <div style={{fontSize:9,color:"#444",marginTop:4}}>drop: {s?.drop_off?.toFixed(1)}</div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-// ── Draft roster ──────────────────────────────────────────────────────────────
-function DraftRoster({myPicks,draftLog,currentPick}) {
-  return (
-    <div style={{width:230,flexShrink:0,background:"#0a0a12",border:"1px solid #1a1a2e",
-      borderRadius:12,padding:14,position:"sticky",top:16,
-      maxHeight:"calc(100vh - 32px)",overflowY:"auto"}}>
-      <div style={{fontSize:10,fontWeight:700,color:"#444",textTransform:"uppercase",
-        letterSpacing:"0.5px",marginBottom:12}}>My Roster · Pick {MY_PICK}</div>
-      {myPicks.map(({round,overall})=>{
-        const entry=draftLog.find(d=>d.pick===overall);
-        const isCurrent=overall===currentPick;
-        const tc=entry?(TIER_COLORS[entry.player.tier]??"#6B7280"):null;
-        return (
-          <div key={overall} style={{display:"flex",gap:8,padding:"5px 7px",borderRadius:5,marginBottom:2,
-            background:isCurrent?"#131325":"transparent",
-            border:isCurrent?"1px solid #4A9EFF25":"1px solid transparent"}}>
-            <div style={{width:28,flexShrink:0}}>
-              <div style={{fontSize:9,color:"#4A9EFF",fontWeight:700}}>R{round}</div>
-              <div style={{fontSize:8,color:"#1e1e2e",fontFamily:"'DM Mono',monospace"}}>#{overall}</div>
-            </div>
-            {entry?(
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{fontSize:11,fontWeight:600,color:tc||"#ddd",
-                  whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{entry.player.name}</div>
-                <div style={{fontSize:9,color:"#444"}}>{entry.player.pos} · {entry.player.team}</div>
-              </div>
-            ):(
-              <div style={{flex:1,fontSize:10,color:isCurrent?"#4A9EFF":"#1a1a2e",fontStyle:"italic"}}>
-                {isCurrent?"← Your pick":"—"}
-              </div>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
+// ── Loading / Error ───────────────────────────────────────────────────────────
 function LoadingScreen() {
   return (
     <div style={{minHeight:"100vh",background:"#080810",display:"flex",flexDirection:"column",
@@ -479,7 +374,6 @@ function LoadingScreen() {
     </div>
   );
 }
-
 function ErrorScreen({msg}) {
   return (
     <div style={{minHeight:"100vh",background:"#080810",display:"flex",flexDirection:"column",
@@ -495,20 +389,20 @@ function ErrorScreen({msg}) {
   );
 }
 
+// ── Main App ──────────────────────────────────────────────────────────────────
 export default function App() {
-  const [data,setData]=useState(null);
-  const [loading,setLoading]=useState(true);
-  const [error,setError]=useState(null);
-  const [tab,setTab]=useState("players");
-  const [search,setSearch]=useState("");
-  const [posFilter,setPosFilter]=useState("All");
-  const [typeFilter,setTypeFilter]=useState("All");
-  const [selected,setSelected]=useState(null);
-  const [drafted,setDrafted]=useState(new Set());
-  const [draftLog,setDraftLog]=useState([]);
-  const [currentPick,setCurrentPick]=useState(1);
-  const [showDrafted,setShowDrafted]=useState(true);
-  const [per600,setPer600]=useState(false);
+  const [data,setData]           = useState(null);
+  const [loading,setLoading]     = useState(true);
+  const [error,setError]         = useState(null);
+  const [tab,setTab]             = useState("players");
+  const [search,setSearch]       = useState("");
+  const [teamFilter,setTeamFilter]   = useState("All");
+  const [posFilter,setPosFilter]     = useState("All");
+  const [typeFilter,setTypeFilter]   = useState("All");
+  const [disFilter,setDisFilter]     = useState("All");
+  const [selected,setSelected]   = useState(null);
+  const [per600,setPer600]       = useState(false);
+  const [showPct,setShowPct]     = useState(false);
 
   useEffect(()=>{
     fetch("/fantasy-baseball-predictor/players.json")
@@ -517,24 +411,43 @@ export default function App() {
       .catch(e=>{setError(e.message);setLoading(false);});
   },[]);
 
-  const players=data?.players??[];
-  const scarcity=data?.scarcity??{};
-  const myPicks=useMemo(()=>getMyPicks(LEAGUE_SIZE,MY_PICK,ROUNDS),[]);
+  const players  = data?.players??[];
+  const scarcity = data?.scarcity??{};
 
-  const filtered=useMemo(()=>players
+  // Build team list
+  const teams = useMemo(()=>{
+    const t = [...new Set(players.map(p=>p.team).filter(Boolean))].sort();
+    return ["All",...t];
+  },[players]);
+
+  // Build position list dynamically
+  const positions = useMemo(()=>{
+    if (typeFilter==="Pitchers") return ["All","SP","RP"];
+    if (typeFilter==="Hitters")  return ["All","C","1B","2B","3B","SS","OF","DH","UTIL"];
+    return ["All"];
+  },[typeFilter]);
+
+  const filtered = useMemo(()=>players
     .filter(p=>typeFilter==="All"||(typeFilter==="Hitters"&&p.type==="hitter")||(typeFilter==="Pitchers"&&p.type==="pitcher"))
-    .filter(p=>posFilter==="All"||(p.positions||[p.pos]).some(pos=>pos===posFilter))
+    .filter(p=>teamFilter==="All"||p.team===teamFilter)
+    .filter(p=>posFilter==="All"||(p.positions||[p.pos]).some(x=>x===posFilter))
     .filter(p=>p.name?.toLowerCase().includes(search.toLowerCase())||p.team?.toLowerCase().includes(search.toLowerCase()))
-    .filter(p=>showDrafted||!drafted.has(p.id))
-  ,[players,typeFilter,posFilter,search,showDrafted,drafted]);
+    .filter(p=>{
+      const dis=p.disagreement_score??0;
+      if (disFilter==="High")   return dis>0.2;
+      if (disFilter==="Medium") return dis>0.1&&dis<=0.2;
+      if (disFilter==="Low")    return dis<=0.1;
+      return true;
+    })
+  ,[players,typeFilter,teamFilter,posFilter,search,disFilter]);
 
-  const byTeam=useMemo(()=>{
+  const byTeam = useMemo(()=>{
     const map={};
     filtered.forEach(p=>{const t=p.team||"—";if(!map[t])map[t]=[];map[t].push(p);});
     return Object.entries(map).sort((a,b)=>a[0].localeCompare(b[0]));
   },[filtered]);
 
-  const byPos=useMemo(()=>{
+  const byPos = useMemo(()=>{
     const map={};
     filtered.forEach(p=>{
       (p.positions||[p.pos||"?"]).forEach(pos=>{
@@ -545,27 +458,20 @@ export default function App() {
     return Object.entries(map).sort((a,b)=>b[1].length-a[1].length);
   },[filtered]);
 
-  const toggleDraft=player=>{
-    const isDrafted=drafted.has(player.id);
-    setDrafted(prev=>{const n=new Set(prev);isDrafted?n.delete(player.id):n.add(player.id);return n;});
-    if(!isDrafted){setDraftLog(prev=>[...prev,{pick:currentPick,player}]);setCurrentPick(p=>p+1);}
-    else setDraftLog(prev=>prev.filter(d=>d.player.id!==player.id));
-  };
-
-  const handleSelect=p=>setSelected(s=>s?.id===p.id?null:p);
-  const handleNavigate=dir=>{
+  const handleSelect  = p=>setSelected(s=>s?.id===p.id?null:p);
+  const handleNavigate = dir=>{
     if(!selected)return;
     const idx=filtered.findIndex(p=>p.id===selected.id);
     const next=filtered[idx+dir];
     if(next)setSelected(next);
   };
 
-  if(loading)return <LoadingScreen/>;
-  if(error)return <ErrorScreen msg={error}/>;
+  if(loading) return <LoadingScreen/>;
+  if(error)   return <ErrorScreen msg={error}/>;
 
   const TAB=(t,label)=>(
     <button key={t} onClick={()=>setTab(t)}
-      style={{padding:"7px 16px",borderRadius:"5px 5px 0 0",border:"none",cursor:"pointer",
+      style={{padding:"7px 18px",borderRadius:"5px 5px 0 0",border:"none",cursor:"pointer",
         fontSize:11,fontWeight:700,letterSpacing:"0.3px",
         background:tab===t?"#0d0d15":"transparent",
         color:tab===t?"#ddd":"#444",
@@ -575,45 +481,104 @@ export default function App() {
     </button>
   );
 
-  const Filters=()=>(
-    <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap",alignItems:"center"}}>
+  // Toggle button style
+  const Toggle=(active,label,onClick,activeColor="#4A9EFF")=>(
+    <button onClick={onClick}
+      style={{padding:"5px 11px",borderRadius:6,border:`1px solid ${active?activeColor:"#1e1e2e"}`,
+        background:active?activeColor+"18":"transparent",
+        color:active?activeColor:"#555",cursor:"pointer",fontSize:11,fontWeight:600,
+        whiteSpace:"nowrap"}}>
+      {label}
+    </button>
+  );
+
+  // Pill button
+  const Pill=(val,cur,setter,label,activeColor="#4A9EFF")=>(
+    <button key={val} onClick={()=>setter(val)}
+      style={{padding:"5px 11px",borderRadius:6,border:"1px solid",fontSize:11,fontWeight:600,cursor:"pointer",
+        borderColor:cur===val?activeColor:"#1e1e2e",
+        background:cur===val?activeColor+"18":"transparent",
+        color:cur===val?activeColor:"#555",whiteSpace:"nowrap"}}>
+      {label||val}
+    </button>
+  );
+
+  const Controls = () => (
+    <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
+      {/* Search */}
       <input placeholder="Search player or team…" value={search} onChange={e=>setSearch(e.target.value)}
-        style={{padding:"7px 12px",background:"#0d0d15",border:"1px solid #1e1e2e",borderRadius:7,
-          color:"#ccc",fontSize:12,flex:1,minWidth:150,outline:"none",fontFamily:"inherit"}}/>
-      {["All","Hitters","Pitchers"].map(t=>(
-        <button key={t} onClick={()=>{setTypeFilter(t);setPosFilter("All");}}
-          style={{padding:"5px 11px",borderRadius:6,border:"1px solid",fontSize:11,fontWeight:600,cursor:"pointer",
-            borderColor:typeFilter===t?"#A78BFA":"#1e1e2e",
-            background:typeFilter===t?"#A78BFA15":"transparent",
-            color:typeFilter===t?"#A78BFA":"#444"}}>
-          {t}
-        </button>
-      ))}
-      {(typeFilter==="Pitchers"?POSITIONS_PIT:typeFilter==="Hitters"?POSITIONS_HIT:["All"]).map(pos=>(
-        <button key={pos} onClick={()=>setPosFilter(pos)}
-          style={{padding:"5px 10px",borderRadius:6,border:"1px solid",fontSize:11,fontWeight:600,cursor:"pointer",
-            borderColor:posFilter===pos?"#4A9EFF":"#1e1e2e",
-            background:posFilter===pos?"#4A9EFF15":"transparent",
-            color:posFilter===pos?"#4A9EFF":"#444"}}>
-          {pos}
-        </button>
-      ))}
+        style={{padding:"6px 12px",background:"#0d0d15",border:"1px solid #1e1e2e",borderRadius:7,
+          color:"#ccc",fontSize:12,minWidth:160,outline:"none",fontFamily:"inherit"}}/>
+
+      {/* Team dropdown */}
+      <select value={teamFilter} onChange={e=>setTeamFilter(e.target.value)}
+        style={{padding:"6px 10px",background:"#0d0d15",border:"1px solid #1e1e2e",borderRadius:7,
+          color:teamFilter==="All"?"#555":"#ccc",fontSize:11,cursor:"pointer",outline:"none"}}>
+        {teams.map(t=><option key={t} value={t}>{t==="All"?"All Teams":t}</option>)}
+      </select>
+
+      {/* Type filter */}
+      <div style={{display:"flex",gap:4}}>
+        {["All","Hitters","Pitchers"].map(t=>Pill(t,typeFilter,v=>{setTypeFilter(v);setPosFilter("All");},null,"#A78BFA"))}
+      </div>
+
+      {/* Position dropdown */}
+      <select value={posFilter} onChange={e=>setPosFilter(e.target.value)}
+        style={{padding:"6px 10px",background:"#0d0d15",border:"1px solid #1e1e2e",borderRadius:7,
+          color:posFilter==="All"?"#555":"#ccc",fontSize:11,cursor:"pointer",outline:"none"}}>
+        {positions.map(p=><option key={p} value={p}>{p==="All"?"All Positions":p}</option>)}
+      </select>
+
+      <div style={{width:1,height:20,background:"#2a2a3e",flexShrink:0}}/>
+
+      {/* Disagreement filter */}
+      <span style={{fontSize:10,color:"#444",fontWeight:700,letterSpacing:"0.5px",textTransform:"uppercase"}}>
+        Agreement:
+      </span>
+      <div style={{display:"flex",gap:4}}>
+        {[["All","All"],["Low","✓ High"],["Medium","~ Med"],["High","⚡ Low"]].map(([val,label])=>
+          Pill(val,disFilter,setDisFilter,label,
+            val==="High"?"#F87171":val==="Medium"?"#FB923C":val==="Low"?"#00C896":"#4A9EFF")
+        )}
+      </div>
+
+      <div style={{width:1,height:20,background:"#2a2a3e",flexShrink:0}}/>
+
+      {/* Toggles */}
+      {Toggle(per600, per600?"✓ /600 PA":"/600 PA", ()=>setPer600(v=>!v))}
+      {Toggle(showPct, showPct?"✓ Percentiles":"Percentiles", ()=>setShowPct(v=>!v), "#A78BFA")}
     </div>
   );
 
-  const PlayerList=({list,showDraft=false})=>list.length===0
+  // Determine which columns to show based on filtered players
+  const hasHitters  = filtered.some(p=>p.type==="hitter");
+  const hasPitchers = filtered.some(p=>p.type==="pitcher");
+  const mixedTypes  = hasHitters && hasPitchers;
+
+  const PlayerList=({list})=>list.length===0
     ?<div style={{color:"#2a2a3e",fontSize:13,textAlign:"center",padding:40}}>No players found.</div>
-    :list.map((p,i)=>(
-        <PlayerRow key={p.id} player={p} rank={i+1}
-          isSelected={selected?.id===p.id} isDrafted={drafted.has(p.id)}
-          onSelect={handleSelect} onDraft={toggleDraft}
-          showDraftBtn={showDraft} per600={per600}/>
-      ));
+    :(
+      <>
+        {/* Show headers only if not mixed — otherwise each row self-labels */}
+        {!mixedTypes && (
+          <ColumnHeaders
+            cols={hasHitters ? HIT_DISPLAY : PIT_DISPLAY}
+            showPct={showPct}
+          />
+        )}
+        {list.map((p,i)=>(
+          <PlayerRow key={p.id} player={p} rank={i+1}
+            isSelected={selected?.id===p.id} isDrafted={false}
+            onSelect={handleSelect} showPct={showPct} per600={per600}/>
+        ))}
+      </>
+    );
 
   const WithPanel=({children})=>(
     <div style={{display:"flex",gap:14,alignItems:"flex-start"}}>
       <div style={{flex:1,minWidth:0}}>{children}</div>
-      {selected&&<PlayerPanel player={selected} allPlayers={filtered} per600={per600}
+      {selected&&<PlayerPanel player={selected} allPlayers={filtered}
+        per600={per600} showPct={showPct}
         onClose={()=>setSelected(null)} onNavigate={handleNavigate}/>}
     </div>
   );
@@ -626,7 +591,10 @@ export default function App() {
         ::-webkit-scrollbar{width:4px;height:4px}
         ::-webkit-scrollbar-track{background:#0a0a12}
         ::-webkit-scrollbar-thumb{background:#1e1e2e;border-radius:2px}
+        select option{background:#0d0d15;color:#ccc;}
       `}</style>
+
+      {/* Header */}
       <div style={{borderBottom:"1px solid #131320",padding:"13px 24px 0",background:"#080810",
         position:"sticky",top:0,zIndex:100}}>
         <div style={{maxWidth:1600,margin:"0 auto"}}>
@@ -636,83 +604,52 @@ export default function App() {
                 ⚾ Fantasy Baseball 2026
               </span>
               <span style={{fontSize:10,color:"#2a2a3e",fontFamily:"'DM Mono',monospace"}}>
-                {players.length} players · {drafted.size} drafted
+                {players.length} players
                 {data?.generated&&` · Updated ${new Date(data.generated).toLocaleDateString()}`}
               </span>
             </div>
-            <button onClick={()=>setPer600(v=>!v)}
-              style={{padding:"4px 11px",borderRadius:6,
-                border:`1px solid ${per600?"#4A9EFF":"#1e1e2e"}`,
-                background:per600?"#4A9EFF18":"transparent",
-                color:per600?"#4A9EFF":"#444",cursor:"pointer",
-                fontSize:10,fontWeight:700,fontFamily:"'DM Mono',monospace"}}>
-              {per600?"✓ per 600 PA":"per 600 PA"}
-            </button>
           </div>
           <div style={{display:"flex",gap:1}}>
             {TAB("players","📊 All Players")}
             {TAB("teams","🏟 By Team")}
             {TAB("positions","📍 By Position")}
-            {TAB("draft","🎯 Draft Board")}
-            {TAB("historical","📅 Historical")}
           </div>
         </div>
       </div>
+
       <div style={{maxWidth:1600,margin:"0 auto",padding:"16px 24px"}}>
-        {tab==="players"&&<><Filters/><WithPanel><PlayerList list={filtered}/></WithPanel></>}
+        <Controls/>
+
+        {tab==="players"&&(
+          <WithPanel><PlayerList list={filtered}/></WithPanel>
+        )}
+
         {tab==="teams"&&(
-          <><Filters/><WithPanel>
+          <WithPanel>
             {byTeam.map(([team,tp])=>(
-              <div key={team} style={{marginBottom:18}}>
+              <div key={team} style={{marginBottom:20}}>
                 <div style={{fontSize:11,fontWeight:700,color:"#555",textTransform:"uppercase",
-                  letterSpacing:"0.8px",marginBottom:7,paddingBottom:5,borderBottom:"1px solid #131320"}}>
+                  letterSpacing:"0.8px",marginBottom:6,paddingBottom:5,borderBottom:"1px solid #131320"}}>
                   {team} <span style={{color:"#2a2a3e",fontWeight:400}}>({tp.length})</span>
                 </div>
                 <PlayerList list={tp}/>
               </div>
             ))}
-          </WithPanel></>
+          </WithPanel>
         )}
+
         {tab==="positions"&&(
-          <><Filters/><WithPanel>
+          <WithPanel>
             {byPos.map(([pos,pp])=>(
-              <div key={pos} style={{marginBottom:18}}>
+              <div key={pos} style={{marginBottom:20}}>
                 <div style={{fontSize:11,fontWeight:700,color:"#555",textTransform:"uppercase",
-                  letterSpacing:"0.8px",marginBottom:7,paddingBottom:5,borderBottom:"1px solid #131320"}}>
+                  letterSpacing:"0.8px",marginBottom:6,paddingBottom:5,borderBottom:"1px solid #131320"}}>
                   {pos} <span style={{color:"#2a2a3e",fontWeight:400}}>({pp.length})</span>
                 </div>
                 <PlayerList list={pp}/>
               </div>
             ))}
-          </WithPanel></>
-        )}
-        {tab==="draft"&&(
-          <>
-            <ScarcityMeter scarcity={scarcity} drafted={drafted} players={players}/>
-            <Filters/>
-            <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
-              <button onClick={()=>setShowDrafted(v=>!v)}
-                style={{padding:"4px 11px",borderRadius:6,border:"1px solid #1e1e2e",
-                  background:showDrafted?"#FB923C15":"transparent",
-                  color:showDrafted?"#FB923C":"#444",cursor:"pointer",fontSize:10,fontWeight:600}}>
-                {showDrafted?"Showing drafted":"Hiding drafted"}
-              </button>
-              {drafted.size>0&&(
-                <button onClick={()=>{setDrafted(new Set());setDraftLog([]);setCurrentPick(1);}}
-                  style={{padding:"4px 11px",borderRadius:6,border:"1px solid #F8717130",
-                    color:"#F87171",background:"transparent",cursor:"pointer",fontSize:10,fontWeight:600}}>
-                  Reset
-                </button>
-              )}
-            </div>
-            <div style={{display:"flex",gap:14,alignItems:"flex-start"}}>
-              <div style={{flex:1,minWidth:0}}><PlayerList list={filtered} showDraft={true}/></div>
-              <DraftRoster myPicks={myPicks} draftLog={draftLog} currentPick={currentPick}/>
-            </div>
-          </>
-        )}
-        {tab==="historical"&&(
-          <><Filters/><WithPanel><PlayerList list={filtered}/></WithPanel></>
+          </WithPanel>
         )}
       </div>
     </div>
