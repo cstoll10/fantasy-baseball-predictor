@@ -14,6 +14,7 @@ import numpy as np
 warnings.filterwarnings("ignore")
 
 LEAGUE_SIZE  = 12
+POOL_SIZE    = 300   # top N hitters/pitchers used for z-scores, VAR, percentiles
 ROSTER_SLOTS = {"C":1,"1B":1,"2B":1,"SS":1,"3B":1,"OF":3,"UTIL":1,"SP":5,"RP":3,"P":2,"BN":7}
 HIT_CATS     = ["R","HR","RBI","SB","OBP","H","TB"]
 PIT_CATS     = ["W","K","ERA","WHIP","SV","HLD","QS"]
@@ -45,7 +46,6 @@ def normalize_pos(p):
     return None
 
 def fetch_positions():
-    """Fetch positions from 2022-2025 fielding stats to maximize coverage."""
     try:
         from pybaseball import fielding_stats
         pos_map = {}
@@ -72,7 +72,6 @@ def fetch_positions():
         return {}
 
 def fetch_pitcher_roles():
-    """Fetch SP/RP roles from pitching stats 2022-2025."""
     try:
         from pybaseball import pitching_stats
         role_map = {}
@@ -173,38 +172,24 @@ def merge_players(hitters, pitchers, pos_map, role_map):
 
             if ptype == "hitter":
                 p["systems"][row["_system"]] = {
-                    "G":    get(row, "G"),
-                    "PA":   get(row, "PA"),
-                    "R":    get(row, "R"),
-                    "HR":   get(row, "HR"),
-                    "RBI":  get(row, "RBI"),
-                    "SB":   get(row, "SB"),
-                    "H":    get(row, "H"),
-                    "TB":   get(row, "TB"),
-                    "AVG":  get(row, "AVG"),
-                    "OBP":  get(row, "OBP"),
-                    "SLG":  get(row, "SLG"),
-                    "wOBA": get(row, "wOBA"),
-                    "wRC+": get(row, "wRC+"),
-                    "BABIP":get(row, "BABIP"),
-                    "BB%":  get(row, "BB%"),
-                    "K%":   get(row, "K%"),
-                    "ISO":  get(row, "ISO"),
+                    "G":    get(row,"G"),   "PA":   get(row,"PA"),
+                    "R":    get(row,"R"),   "HR":   get(row,"HR"),
+                    "RBI":  get(row,"RBI"), "SB":   get(row,"SB"),
+                    "H":    get(row,"H"),   "TB":   get(row,"TB"),
+                    "AVG":  get(row,"AVG"), "OBP":  get(row,"OBP"),
+                    "SLG":  get(row,"SLG"), "wOBA": get(row,"wOBA"),
+                    "wRC+": get(row,"wRC+"),"BABIP":get(row,"BABIP"),
+                    "BB%":  get(row,"BB%"), "K%":   get(row,"K%"),
+                    "ISO":  get(row,"ISO"),
                 }
             else:
                 p["systems"][row["_system"]] = {
-                    "G":    get(row, "G"),
-                    "GS":   get(row, "GS"),
-                    "IP":   get(row, "IP"),
-                    "W":    get(row, "W"),
-                    "K":    get(row, "K", "SO"),
-                    "ERA":  get(row, "ERA"),
-                    "WHIP": get(row, "WHIP"),
-                    "SV":   get(row, "SV"),
-                    "HLD":  get(row, "HLD", "HD"),
-                    "QS":   get(row, "QS"),
-                    "BB":   get(row, "BB"),
-                    "FIP":  get(row, "FIP"),
+                    "G":    get(row,"G"),   "GS":   get(row,"GS"),
+                    "IP":   get(row,"IP"),  "W":    get(row,"W"),
+                    "K":    get(row,"K","SO"), "ERA": get(row,"ERA"),
+                    "WHIP": get(row,"WHIP"),"SV":   get(row,"SV"),
+                    "HLD":  get(row,"HLD","HD"), "QS": get(row,"QS"),
+                    "BB":   get(row,"BB"),  "FIP":  get(row,"FIP"),
                 }
 
     if not hitters.empty:  process(hitters,  "hitter")
@@ -258,12 +243,18 @@ def add_zscores_var(players):
     hitters  = [p for p in players if p["type"] == "hitter"]
     pitchers = [p for p in players if p["type"] == "pitcher"]
 
-    def compute_z(pool, cats):
+    # Use top POOL_SIZE by projected PA/IP as the comparison pool
+    h_pool = sorted(hitters,  key=lambda x: x["consensus"].get("PA") or 0, reverse=True)[:POOL_SIZE]
+    p_pool = sorted(pitchers, key=lambda x: x["consensus"].get("IP") or 0, reverse=True)[:POOL_SIZE]
+
+    def compute_z(pool, all_type, cats):
+        # Build distribution from pool only
         stats = {}
         for cat in cats:
             vals = [p["consensus"].get(cat) for p in pool if p["consensus"].get(cat) is not None]
             stats[cat] = (np.mean(vals), np.std(vals) or 1) if vals else (0, 1)
-        for p in pool:
+        # Score ALL players of that type against pool distribution
+        for p in all_type:
             z = 0.0
             for cat in cats:
                 val = p["consensus"].get(cat)
@@ -273,9 +264,10 @@ def add_zscores_var(players):
                 z += -zc if cat in LOWER_BETTER else zc
             p["zScore"] = round(float(z), 2)
 
-    compute_z(hitters,  HIT_CATS)
-    compute_z(pitchers, PIT_CATS)
+    compute_z(h_pool, hitters,  HIT_CATS)
+    compute_z(p_pool, pitchers, PIT_CATS)
 
+    # Replacement level based on roster slots
     h_slots = LEAGUE_SIZE * (ROSTER_SLOTS["C"] + ROSTER_SLOTS["1B"] + ROSTER_SLOTS["2B"] +
                               ROSTER_SLOTS["SS"] + ROSTER_SLOTS["3B"] + ROSTER_SLOTS["OF"] +
                               ROSTER_SLOTS["UTIL"])
@@ -305,19 +297,27 @@ def add_percentiles(players):
     hitters  = [p for p in players if p["type"] == "hitter"]
     pitchers = [p for p in players if p["type"] == "pitcher"]
 
-    def compute(pool, cats):
+    # Build distribution from top POOL_SIZE only
+    h_pool = sorted(hitters,  key=lambda x: x["consensus"].get("PA") or 0, reverse=True)[:POOL_SIZE]
+    p_pool = sorted(pitchers, key=lambda x: x["consensus"].get("IP") or 0, reverse=True)[:POOL_SIZE]
+
+    def compute(pool, all_type, cats):
         for cat in cats:
             vals = sorted([p["consensus"].get(cat) for p in pool
                           if p["consensus"].get(cat) is not None])
             n = len(vals)
             if not n: continue
-            for p in pool:
+            for p in all_type:
                 v = p["consensus"].get(cat)
-                pct = len([x for x in vals if x <= v]) / n if v is not None else None
-                p.setdefault("percentiles", {})[cat] = round(pct, 4) if pct is not None else None
+                if v is None:
+                    p.setdefault("percentiles", {})[cat] = None
+                else:
+                    pct = len([x for x in vals if x <= v]) / n
+                    # Cap at 1.0 for players above pool max
+                    p.setdefault("percentiles", {})[cat] = round(min(pct, 1.0), 4)
 
-    compute(hitters,  HIT_CATS + ["wOBA","wRC+","AVG","SLG","ISO"])
-    compute(pitchers, PIT_CATS + ["FIP"])
+    compute(h_pool, hitters,  HIT_CATS + ["wOBA","wRC+","AVG","SLG","ISO"])
+    compute(p_pool, pitchers, PIT_CATS + ["FIP"])
 
     all_vars = sorted([p.get("VAR",0)    for p in players])
     all_z    = sorted([p.get("zScore",0) for p in players])
@@ -412,7 +412,7 @@ def main():
     print("\nStep 4: Filtering qualified players...")
     players = filter_qualified(players)
 
-    print("\nStep 5: Computing stats...")
+    print("\nStep 5: Computing stats (pool = top {POOL_SIZE} per type)...")
     players = add_consensus(players)
     players = add_disagreement(players)
     players = add_zscores_var(players)
@@ -435,6 +435,7 @@ def main():
     output = {
         "generated": pd.Timestamp.now().isoformat(),
         "systems":   SYSTEMS,
+        "pool_size": POOL_SIZE,
         "league":    {"size":LEAGUE_SIZE,"hit_cats":HIT_CATS,"pit_cats":PIT_CATS,"roster_slots":ROSTER_SLOTS},
         "scarcity":  scarcity,
         "players":   players,
@@ -447,6 +448,7 @@ def main():
     print(f"\nDone! Wrote {len(players)} players to {OUT_FILE}")
     print(f"  Hitters:  {sum(1 for p in players if p['type']=='hitter')}")
     print(f"  Pitchers: {sum(1 for p in players if p['type']=='pitcher')}")
+    print(f"  Pool size used for percentiles/z-scores: top {POOL_SIZE} per type")
 
 if __name__ == "__main__":
     main()

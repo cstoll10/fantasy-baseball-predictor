@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 
 const LEAGUE_SIZE  = 12;
-const ROSTER_SLOTS = { C:1,"1B":1,"2B":1,SS:1,"3B":1,OF:3,UTIL:1,SP:5,RP:3,P:2,BN:7 };
 const HIT_CATS = ["R","HR","RBI","SB","OBP","H","TB"];
 const PIT_CATS = ["W","K","ERA","WHIP","SV","HLD","QS"];
 const LOWER_BETTER = new Set(["ERA","WHIP"]);
@@ -11,10 +10,10 @@ const SYS_COLORS = {
   "THE BAT":"#FB923C","Depth Charts":"#F472B6",
 };
 const TIER_COLORS = { 1:"#00C896",2:"#4A9EFF",3:"#A78BFA",4:"#6B7280",5:"#F87171" };
-
-// hitter columns shown in the table
 const HIT_DISPLAY = ["G","HR","R","RBI","SB","AVG","OBP","SLG","wOBA","wRC+"];
 const PIT_DISPLAY = ["G","W","K","ERA","WHIP","SV","HLD","QS"];
+const HIT_POSITIONS = ["All","C","1B","2B","3B","SS","OF","DH","UTIL"];
+const PIT_POSITIONS = ["All","SP","RP"];
 
 function pctColor(pct, lowerBetter=false) {
   const ep = lowerBetter && pct!=null ? 1-pct : pct;
@@ -40,15 +39,14 @@ function scaleTo600(val, cat, pa) {
 }
 
 function ordinal(pct) {
-  if (pct==null) return null;
+  if (pct==null) return "—";
   const n = Math.round(pct*100);
-  if (n>=90) return n+"th";
-  const s = ["th","st","nd","rd"];
-  const v = n%100;
+  if (n===100) return "99th";
+  const s=["th","st","nd","rd"];
+  const v=n%100;
   return n+(s[(v-20)%10]||s[v]||s[0]);
 }
 
-// ── Disagreement badge ────────────────────────────────────────────────────────
 function DisBadge({cv}) {
   if (!cv||cv<0.12) return null;
   const high=cv>0.25, c=high?"#F87171":"#FB923C";
@@ -60,7 +58,6 @@ function DisBadge({cv}) {
   );
 }
 
-// ── System comparison table ───────────────────────────────────────────────────
 function SystemTable({player,per600,cats}) {
   const available=SYSTEMS.filter(s=>player.systems?.[s]);
   if (!available.length) return <div style={{color:"#444",fontSize:12}}>No system data.</div>;
@@ -112,7 +109,6 @@ function SystemTable({player,per600,cats}) {
   );
 }
 
-// ── Disagreement panel ────────────────────────────────────────────────────────
 function DisagreementPanel({player}) {
   const cats=player.type==="hitter"?HIT_CATS:PIT_CATS;
   return (
@@ -138,7 +134,6 @@ function DisagreementPanel({player}) {
   );
 }
 
-// ── Player detail panel ───────────────────────────────────────────────────────
 function PlayerPanel({player,allPlayers,per600,showPct,onClose,onNavigate}) {
   const [panelTab,setPanelTab]=useState("overview");
   if (!player) return null;
@@ -204,7 +199,7 @@ function PlayerPanel({player,allPlayers,per600,showPct,onClose,onNavigate}) {
         <div style={{background:"#0f0f18",border:"1px solid #1a1a2e",borderRadius:8,padding:14}}>
           <div style={{fontSize:9,color:"#444",fontWeight:700,marginBottom:10,
             textTransform:"uppercase",letterSpacing:"0.8px"}}>
-            Percentiles {per600?"(per 600 PA)":""}
+            Percentile Ranks {per600?"(per 600 PA)":""} — vs top 300
           </div>
           {cats.map(cat=>{
             const raw=player.consensus?.[cat], pa=player.consensus?.PA||1;
@@ -214,11 +209,11 @@ function PlayerPanel({player,allPlayers,per600,showPct,onClose,onNavigate}) {
             const ep=lb&&pct!=null?1-pct:pct;
             const color=pctColor(ep);
             return (
-              <div key={cat} style={{marginBottom:8}}>
+              <div key={cat} style={{marginBottom:9}}>
                 <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
                   <span style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:"0.5px"}}>{cat}</span>
-                  <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                    {pct!=null&&<span style={{fontSize:10,color,fontFamily:"'DM Mono',monospace"}}>{ordinal(ep)}</span>}
+                  <div style={{display:"flex",gap:10,alignItems:"center"}}>
+                    <span style={{fontSize:10,color,fontFamily:"'DM Mono',monospace"}}>{ordinal(ep)}</span>
                     <span style={{fontSize:12,fontWeight:700,color,fontFamily:"'DM Mono',monospace"}}>{fmt(val,cat)}</span>
                   </div>
                 </div>
@@ -246,38 +241,41 @@ function PlayerPanel({player,allPlayers,per600,showPct,onClose,onNavigate}) {
   );
 }
 
-// ── Column headers ────────────────────────────────────────────────────────────
-function ColumnHeaders({cols, showPct}) {
+// ── Column headers row ────────────────────────────────────────────────────────
+function ColumnHeaders({isHitter, showPct}) {
+  const cols = isHitter ? HIT_DISPLAY : PIT_DISPLAY;
   return (
-    <div style={{display:"flex",alignItems:"center",gap:6,padding:"5px 12px",
-      borderBottom:"1px solid #1a1a2e",marginBottom:4}}>
-      <span style={{width:22,flexShrink:0}}/>
-      <span style={{width:26,flexShrink:0}}/>
+    <div style={{display:"flex",alignItems:"flex-end",gap:6,padding:"4px 12px 6px",
+      borderBottom:"1px solid #1e1e2e",marginBottom:4,userSelect:"none"}}>
+      {/* rank */}
+      <div style={{width:22,flexShrink:0}}/>
+      {/* pos */}
+      <div style={{width:26,flexShrink:0,fontSize:9,color:"#333",textTransform:"uppercase",letterSpacing:"0.4px",textAlign:"center"}}>POS</div>
+      {/* name/team */}
       <div style={{minWidth:140,maxWidth:180,flexShrink:0,fontSize:9,color:"#444",
-        fontWeight:700,textTransform:"uppercase",letterSpacing:"0.5px"}}>
-        Name / Team
-      </div>
+        fontWeight:700,textTransform:"uppercase",letterSpacing:"0.5px"}}>Player</div>
+      {/* stat cols */}
       <div style={{display:"flex",gap:8,flexShrink:0}}>
         {cols.map(cat=>(
           <div key={cat} style={{minWidth:36,textAlign:"right"}}>
             <div style={{fontSize:9,color:"#555",fontWeight:700,
               textTransform:"uppercase",letterSpacing:"0.4px"}}>{cat}</div>
-            {showPct&&<div style={{fontSize:8,color:"#333"}}>pct</div>}
+            {showPct&&<div style={{fontSize:8,color:"#2a2a3e",marginTop:1}}>rank</div>}
           </div>
         ))}
       </div>
-      <div style={{minWidth:34,textAlign:"right",flexShrink:0}}>
-        <div style={{fontSize:9,color:"#555",fontWeight:700,letterSpacing:"0.4px"}}>DIS</div>
-      </div>
-      <div style={{minWidth:36,textAlign:"right",flexShrink:0}}>
-        <div style={{fontSize:9,color:"#555",fontWeight:700,letterSpacing:"0.4px"}}>VAR</div>
-      </div>
+      {/* dis */}
+      <div style={{minWidth:34,textAlign:"right",flexShrink:0,
+        fontSize:9,color:"#555",fontWeight:700,letterSpacing:"0.4px"}}>DIS</div>
+      {/* var */}
+      <div style={{minWidth:36,textAlign:"right",flexShrink:0,
+        fontSize:9,color:"#555",fontWeight:700,letterSpacing:"0.4px"}}>VAR</div>
     </div>
   );
 }
 
 // ── Player row ────────────────────────────────────────────────────────────────
-function PlayerRow({player,rank,isSelected,isDrafted,onSelect,showPct,per600}) {
+function PlayerRow({player,rank,isSelected,onSelect,showPct,per600}) {
   const tc    = TIER_COLORS[player.tier]??"#6B7280";
   const flags = player.flags??[];
   const c     = player.consensus??{};
@@ -291,9 +289,9 @@ function PlayerRow({player,rank,isSelected,isDrafted,onSelect,showPct,per600}) {
     <div onClick={()=>onSelect(player)}
       style={{display:"flex",alignItems:"center",gap:6,padding:"6px 12px",
         borderRadius:7,cursor:"pointer",marginBottom:2,
-        background:isSelected?"#131320":isDrafted?"#0a0a0d":"#0d0d15",
+        background:isSelected?"#131320":"#0d0d15",
         border:isSelected?`1px solid ${tc}45`:"1px solid #131320",
-        opacity:isDrafted?0.4:1,transition:"all 0.1s"}}>
+        transition:"all 0.1s"}}>
 
       <span style={{width:22,fontSize:10,color:"#2a2a3e",fontFamily:"'DM Mono',monospace",flexShrink:0}}>{rank}</span>
 
@@ -305,9 +303,8 @@ function PlayerRow({player,rank,isSelected,isDrafted,onSelect,showPct,per600}) {
 
       <div style={{minWidth:140,maxWidth:180,flexShrink:0}}>
         <div style={{display:"flex",alignItems:"center",gap:4}}>
-          <span style={{fontSize:13,fontWeight:600,color:isDrafted?"#3a3a4a":"#ddd",
-            textDecoration:isDrafted?"line-through":"none",letterSpacing:"-0.2px",
-            overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+          <span style={{fontSize:13,fontWeight:600,color:"#ddd",
+            letterSpacing:"-0.2px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
             {player.name}
           </span>
           {flags.length>0&&<span style={{fontSize:9,color:"#F87171",flexShrink:0}}>⚠</span>}
@@ -315,7 +312,6 @@ function PlayerRow({player,rank,isSelected,isDrafted,onSelect,showPct,per600}) {
         <div style={{fontSize:10,color:"#444"}}>{player.team}</div>
       </div>
 
-      {/* Stat columns */}
       <div style={{display:"flex",gap:8,flexShrink:0}}>
         {cols.map(cat=>{
           const raw = c[cat];
@@ -329,7 +325,7 @@ function PlayerRow({player,rank,isSelected,isDrafted,onSelect,showPct,per600}) {
               <div style={{color,fontWeight:600,fontFamily:"'DM Mono',monospace",fontSize:11}}>
                 {fmt(val,cat)}
               </div>
-              {showPct && (
+              {showPct&&(
                 <div style={{fontSize:9,color:ep!=null?color:"#333",fontFamily:"'DM Mono',monospace"}}>
                   {ep!=null ? ordinal(ep) : "—"}
                 </div>
@@ -339,26 +335,23 @@ function PlayerRow({player,rank,isSelected,isDrafted,onSelect,showPct,per600}) {
         })}
       </div>
 
-      {/* DIS */}
       <div style={{minWidth:34,textAlign:"right",flexShrink:0}}>
         <div style={{color:disColor,fontWeight:600,fontFamily:"'DM Mono',monospace",fontSize:11}}>
           {(dis*100).toFixed(0)}%
         </div>
-        {showPct&&<div style={{fontSize:9,color:"#333"}}>dis</div>}
+        {showPct&&<div style={{fontSize:9,color:"#333",fontFamily:"'DM Mono',monospace"}}>dis</div>}
       </div>
 
-      {/* VAR */}
       <div style={{minWidth:36,textAlign:"right",flexShrink:0}}>
         <div style={{color:tc,fontWeight:700,fontFamily:"'DM Mono',monospace",fontSize:11}}>
           {player.VAR>0?"+":""}{player.VAR}
         </div>
-        {showPct&&<div style={{fontSize:9,color:"#333"}}>var</div>}
+        {showPct&&<div style={{fontSize:9,color:"#333",fontFamily:"'DM Mono',monospace"}}>var</div>}
       </div>
     </div>
   );
 }
 
-// ── Loading / Error ───────────────────────────────────────────────────────────
 function LoadingScreen() {
   return (
     <div style={{minHeight:"100vh",background:"#080810",display:"flex",flexDirection:"column",
@@ -374,6 +367,7 @@ function LoadingScreen() {
     </div>
   );
 }
+
 function ErrorScreen({msg}) {
   return (
     <div style={{minHeight:"100vh",background:"#080810",display:"flex",flexDirection:"column",
@@ -389,20 +383,19 @@ function ErrorScreen({msg}) {
   );
 }
 
-// ── Main App ──────────────────────────────────────────────────────────────────
 export default function App() {
-  const [data,setData]           = useState(null);
-  const [loading,setLoading]     = useState(true);
-  const [error,setError]         = useState(null);
-  const [tab,setTab]             = useState("players");
-  const [search,setSearch]       = useState("");
-  const [teamFilter,setTeamFilter]   = useState("All");
-  const [posFilter,setPosFilter]     = useState("All");
-  const [typeFilter,setTypeFilter]   = useState("All");
-  const [disFilter,setDisFilter]     = useState("All");
-  const [selected,setSelected]   = useState(null);
-  const [per600,setPer600]       = useState(false);
-  const [showPct,setShowPct]     = useState(false);
+  const [data,setData]         = useState(null);
+  const [loading,setLoading]   = useState(true);
+  const [error,setError]       = useState(null);
+  const [tab,setTab]           = useState("players");
+  const [search,setSearch]     = useState("");
+  const [teamFilter,setTeamFilter] = useState("All");
+  const [typeFilter,setTypeFilter] = useState("All");
+  const [posFilter,setPosFilter]   = useState("All");
+  const [disFilter,setDisFilter]   = useState("All");
+  const [selected,setSelected] = useState(null);
+  const [per600,setPer600]     = useState(false);
+  const [showPct,setShowPct]   = useState(false);
 
   useEffect(()=>{
     fetch("/fantasy-baseball-predictor/players.json")
@@ -411,20 +404,19 @@ export default function App() {
       .catch(e=>{setError(e.message);setLoading(false);});
   },[]);
 
-  const players  = data?.players??[];
-  const scarcity = data?.scarcity??{};
+  const players = data?.players??[];
 
-  // Build team list
   const teams = useMemo(()=>{
-    const t = [...new Set(players.map(p=>p.team).filter(Boolean))].sort();
+    const t=[...new Set(players.map(p=>p.team).filter(Boolean))].sort();
     return ["All",...t];
   },[players]);
 
-  // Build position list dynamically
-  const positions = useMemo(()=>{
-    if (typeFilter==="Pitchers") return ["All","SP","RP"];
-    if (typeFilter==="Hitters")  return ["All","C","1B","2B","3B","SS","OF","DH","UTIL"];
-    return ["All"];
+  // Position options depend on type filter
+  const posOptions = useMemo(()=>{
+    if (typeFilter==="Pitchers") return PIT_POSITIONS;
+    if (typeFilter==="Hitters")  return HIT_POSITIONS;
+    // Mixed — show both sets minus "All" duplicates
+    return ["All",...HIT_POSITIONS.slice(1),...PIT_POSITIONS.slice(1)];
   },[typeFilter]);
 
   const filtered = useMemo(()=>players
@@ -434,9 +426,9 @@ export default function App() {
     .filter(p=>p.name?.toLowerCase().includes(search.toLowerCase())||p.team?.toLowerCase().includes(search.toLowerCase()))
     .filter(p=>{
       const dis=p.disagreement_score??0;
-      if (disFilter==="High")   return dis>0.2;
+      if (disFilter==="Low")    return dis>0.2;         // low agreement = high disagreement
       if (disFilter==="Medium") return dis>0.1&&dis<=0.2;
-      if (disFilter==="Low")    return dis<=0.1;
+      if (disFilter==="High")   return dis<=0.1;        // high agreement = low disagreement
       return true;
     })
   ,[players,typeFilter,teamFilter,posFilter,search,disFilter]);
@@ -458,13 +450,16 @@ export default function App() {
     return Object.entries(map).sort((a,b)=>b[1].length-a[1].length);
   },[filtered]);
 
-  const handleSelect  = p=>setSelected(s=>s?.id===p.id?null:p);
+  const handleSelect   = p=>setSelected(s=>s?.id===p.id?null:p);
   const handleNavigate = dir=>{
     if(!selected)return;
     const idx=filtered.findIndex(p=>p.id===selected.id);
     const next=filtered[idx+dir];
     if(next)setSelected(next);
   };
+
+  // When type filter changes, reset position filter
+  const handleTypeChange = v => { setTypeFilter(v); setPosFilter("All"); };
 
   if(loading) return <LoadingScreen/>;
   if(error)   return <ErrorScreen msg={error}/>;
@@ -481,18 +476,11 @@ export default function App() {
     </button>
   );
 
-  // Toggle button style
-  const Toggle=(active,label,onClick,activeColor="#4A9EFF")=>(
-    <button onClick={onClick}
-      style={{padding:"5px 11px",borderRadius:6,border:`1px solid ${active?activeColor:"#1e1e2e"}`,
-        background:active?activeColor+"18":"transparent",
-        color:active?activeColor:"#555",cursor:"pointer",fontSize:11,fontWeight:600,
-        whiteSpace:"nowrap"}}>
-      {label}
-    </button>
-  );
+  const selectStyle = {
+    padding:"6px 10px",background:"#0d0d15",border:"1px solid #1e1e2e",
+    borderRadius:7,color:"#ccc",fontSize:11,cursor:"pointer",outline:"none",
+  };
 
-  // Pill button
   const Pill=(val,cur,setter,label,activeColor="#4A9EFF")=>(
     <button key={val} onClick={()=>setter(val)}
       style={{padding:"5px 11px",borderRadius:6,border:"1px solid",fontSize:11,fontWeight:600,cursor:"pointer",
@@ -503,76 +491,69 @@ export default function App() {
     </button>
   );
 
-  const Controls = () => (
-    <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
-      {/* Search */}
-      <input placeholder="Search player or team…" value={search} onChange={e=>setSearch(e.target.value)}
-        style={{padding:"6px 12px",background:"#0d0d15",border:"1px solid #1e1e2e",borderRadius:7,
-          color:"#ccc",fontSize:12,minWidth:160,outline:"none",fontFamily:"inherit"}}/>
+  const Toggle=(active,label,onClick,activeColor="#4A9EFF")=>(
+    <button onClick={onClick}
+      style={{padding:"5px 11px",borderRadius:6,border:`1px solid ${active?activeColor:"#1e1e2e"}`,
+        background:active?activeColor+"18":"transparent",
+        color:active?activeColor:"#555",cursor:"pointer",fontSize:11,fontWeight:600,whiteSpace:"nowrap"}}>
+      {label}
+    </button>
+  );
 
-      {/* Team dropdown */}
-      <select value={teamFilter} onChange={e=>setTeamFilter(e.target.value)}
-        style={{padding:"6px 10px",background:"#0d0d15",border:"1px solid #1e1e2e",borderRadius:7,
-          color:teamFilter==="All"?"#555":"#ccc",fontSize:11,cursor:"pointer",outline:"none"}}>
+  // Determine header type for current view
+  const hitterCount  = filtered.filter(p=>p.type==="hitter").length;
+  const pitcherCount = filtered.filter(p=>p.type==="pitcher").length;
+  const dominantType = hitterCount >= pitcherCount ? "hitter" : "pitcher";
+
+  const Controls = () => (
+    <div style={{display:"flex",gap:8,marginBottom:10,flexWrap:"wrap",alignItems:"center"}}>
+      <input placeholder="Search player or team…" value={search} onChange={e=>setSearch(e.target.value)}
+        style={{...selectStyle,minWidth:160,fontFamily:"inherit",padding:"6px 12px"}}/>
+
+      <select value={teamFilter} onChange={e=>setTeamFilter(e.target.value)} style={selectStyle}>
         {teams.map(t=><option key={t} value={t}>{t==="All"?"All Teams":t}</option>)}
       </select>
 
-      {/* Type filter */}
       <div style={{display:"flex",gap:4}}>
-        {["All","Hitters","Pitchers"].map(t=>Pill(t,typeFilter,v=>{setTypeFilter(v);setPosFilter("All");},null,"#A78BFA"))}
+        {["All","Hitters","Pitchers"].map(t=>Pill(t,typeFilter,handleTypeChange,null,"#A78BFA"))}
       </div>
 
-      {/* Position dropdown */}
-      <select value={posFilter} onChange={e=>setPosFilter(e.target.value)}
-        style={{padding:"6px 10px",background:"#0d0d15",border:"1px solid #1e1e2e",borderRadius:7,
-          color:posFilter==="All"?"#555":"#ccc",fontSize:11,cursor:"pointer",outline:"none"}}>
-        {positions.map(p=><option key={p} value={p}>{p==="All"?"All Positions":p}</option>)}
+      <select value={posFilter} onChange={e=>setPosFilter(e.target.value)} style={selectStyle}>
+        {posOptions.map(p=><option key={p} value={p}>{p==="All"?"All Positions":p}</option>)}
       </select>
 
-      <div style={{width:1,height:20,background:"#2a2a3e",flexShrink:0}}/>
-
-      {/* Disagreement filter */}
-      <span style={{fontSize:10,color:"#444",fontWeight:700,letterSpacing:"0.5px",textTransform:"uppercase"}}>
-        Agreement:
-      </span>
+      <div style={{width:1,height:18,background:"#2a2a3e",flexShrink:0}}/>
+      <span style={{fontSize:9,color:"#444",fontWeight:700,letterSpacing:"0.5px",textTransform:"uppercase"}}>Agreement:</span>
       <div style={{display:"flex",gap:4}}>
-        {[["All","All"],["Low","✓ High"],["Medium","~ Med"],["High","⚡ Low"]].map(([val,label])=>
-          Pill(val,disFilter,setDisFilter,label,
-            val==="High"?"#F87171":val==="Medium"?"#FB923C":val==="Low"?"#00C896":"#4A9EFF")
-        )}
+        {Pill("All",   disFilter,setDisFilter,"All",    "#4A9EFF")}
+        {Pill("High",  disFilter,setDisFilter,"✓ High", "#00C896")}
+        {Pill("Medium",disFilter,setDisFilter,"~ Med",  "#FB923C")}
+        {Pill("Low",   disFilter,setDisFilter,"⚡ Low", "#F87171")}
       </div>
 
-      <div style={{width:1,height:20,background:"#2a2a3e",flexShrink:0}}/>
-
-      {/* Toggles */}
-      {Toggle(per600, per600?"✓ /600 PA":"/600 PA", ()=>setPer600(v=>!v))}
+      <div style={{width:1,height:18,background:"#2a2a3e",flexShrink:0}}/>
+      {Toggle(per600,  per600?"✓ /600 PA":"/600 PA",  ()=>setPer600(v=>!v))}
       {Toggle(showPct, showPct?"✓ Percentiles":"Percentiles", ()=>setShowPct(v=>!v), "#A78BFA")}
     </div>
   );
 
-  // Determine which columns to show based on filtered players
-  const hasHitters  = filtered.some(p=>p.type==="hitter");
-  const hasPitchers = filtered.some(p=>p.type==="pitcher");
-  const mixedTypes  = hasHitters && hasPitchers;
-
-  const PlayerList=({list})=>list.length===0
-    ?<div style={{color:"#2a2a3e",fontSize:13,textAlign:"center",padding:40}}>No players found.</div>
-    :(
+  const PlayerList = ({list}) => {
+    if (list.length===0) return <div style={{color:"#2a2a3e",fontSize:13,textAlign:"center",padding:40}}>No players found.</div>;
+    // Show headers — use dominant type in the list
+    const listHitters  = list.filter(p=>p.type==="hitter").length;
+    const listPitchers = list.filter(p=>p.type==="pitcher").length;
+    const headerType   = listHitters >= listPitchers ? "hitter" : "pitcher";
+    return (
       <>
-        {/* Show headers only if not mixed — otherwise each row self-labels */}
-        {!mixedTypes && (
-          <ColumnHeaders
-            cols={hasHitters ? HIT_DISPLAY : PIT_DISPLAY}
-            showPct={showPct}
-          />
-        )}
+        <ColumnHeaders isHitter={headerType==="hitter"} showPct={showPct}/>
         {list.map((p,i)=>(
           <PlayerRow key={p.id} player={p} rank={i+1}
-            isSelected={selected?.id===p.id} isDrafted={false}
+            isSelected={selected?.id===p.id}
             onSelect={handleSelect} showPct={showPct} per600={per600}/>
         ))}
       </>
     );
+  };
 
   const WithPanel=({children})=>(
     <div style={{display:"flex",gap:14,alignItems:"flex-start"}}>
@@ -591,10 +572,10 @@ export default function App() {
         ::-webkit-scrollbar{width:4px;height:4px}
         ::-webkit-scrollbar-track{background:#0a0a12}
         ::-webkit-scrollbar-thumb{background:#1e1e2e;border-radius:2px}
+        select{appearance:none;}
         select option{background:#0d0d15;color:#ccc;}
       `}</style>
 
-      {/* Header */}
       <div style={{borderBottom:"1px solid #131320",padding:"13px 24px 0",background:"#080810",
         position:"sticky",top:0,zIndex:100}}>
         <div style={{maxWidth:1600,margin:"0 auto"}}>
@@ -604,7 +585,7 @@ export default function App() {
                 ⚾ Fantasy Baseball 2026
               </span>
               <span style={{fontSize:10,color:"#2a2a3e",fontFamily:"'DM Mono',monospace"}}>
-                {players.length} players
+                {players.length} players · {filtered.length} shown
                 {data?.generated&&` · Updated ${new Date(data.generated).toLocaleDateString()}`}
               </span>
             </div>
@@ -617,13 +598,12 @@ export default function App() {
         </div>
       </div>
 
-      <div style={{maxWidth:1600,margin:"0 auto",padding:"16px 24px"}}>
+      <div style={{maxWidth:1600,margin:"0 auto",padding:"14px 24px"}}>
         <Controls/>
 
         {tab==="players"&&(
           <WithPanel><PlayerList list={filtered}/></WithPanel>
         )}
-
         {tab==="teams"&&(
           <WithPanel>
             {byTeam.map(([team,tp])=>(
@@ -637,7 +617,6 @@ export default function App() {
             ))}
           </WithPanel>
         )}
-
         {tab==="positions"&&(
           <WithPanel>
             {byPos.map(([pos,pp])=>(
