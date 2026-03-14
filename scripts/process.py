@@ -1,36 +1,31 @@
 """
-Fantasy Baseball 2026 — Data Processing Pipeline
+Fantasy Baseball 2026 - Data Processing Pipeline
 """
 
 import json
-import os
 import re
 import sys
-import time
 import warnings
 from pathlib import Path
 
 import pandas as pd
 import numpy as np
-import requests
-from bs4 import BeautifulSoup
 
 warnings.filterwarnings("ignore")
 
-# ── Config ────────────────────────────────────────────────────────────────────
-LEAGUE_SIZE   = 12
-ROSTER_SLOTS  = {"C":1,"1B":1,"2B":1,"SS":1,"3B":1,"OF":3,"UTIL":1,"SP":5,"RP":3,"P":2,"BN":7}
-HIT_CATS      = ["R","HR","RBI","SB","OBP","H","TB"]
-PIT_CATS      = ["W","K","ERA","WHIP","SV","HLD","QS"]
-LOWER_BETTER  = {"ERA","WHIP"}
-MIN_PA        = 150
-MIN_IP        = 40
-SYSTEMS       = ["ATC","ZiPS","Steamer","THE BAT","Depth Charts"]
+LEAGUE_SIZE  = 12
+ROSTER_SLOTS = {"C":1,"1B":1,"2B":1,"SS":1,"3B":1,"OF":3,"UTIL":1,"SP":5,"RP":3,"P":2,"BN":7}
+HIT_CATS     = ["R","HR","RBI","SB","OBP","H","TB"]
+PIT_CATS     = ["W","K","ERA","WHIP","SV","HLD","QS"]
+LOWER_BETTER = {"ERA","WHIP"}
+MIN_PA       = 150
+MIN_IP       = 40
+SYSTEMS      = ["ATC","ZiPS","Steamer","THE BAT","Depth Charts"]
 
-ROOT      = Path(__file__).parent.parent
-DATA_DIR  = ROOT / "data" / "projections"
-HIST_DIR  = ROOT / "data" / "raw"
-OUT_FILE  = ROOT / "public" / "players.json"
+ROOT     = Path(__file__).parent.parent
+DATA_DIR = ROOT / "data" / "projections"
+HIST_DIR = ROOT / "data" / "raw"
+OUT_FILE = ROOT / "public" / "players.json"
 
 SYSTEM_FILES = {
     "ATC":          ("atc_hitters.csv",          "atc_pitchers.csv"),
@@ -40,190 +35,167 @@ SYSTEM_FILES = {
     "Depth Charts": ("depthcharts_hitters.csv",   "depthcharts_pitchers.csv"),
 }
 
-HIT_ALIASES = {
-    "Name":  ["Name","PlayerName","name"],
-    "Team":  ["Team","Tm","team"],
-    "Pos":   ["Pos","Position","pos","POS"],
-    "PA":    ["PA","pa"],
-    "R":     ["R","Runs"],
-    "HR":    ["HR","HomeRuns"],
-    "RBI":   ["RBI","rbi"],
-    "SB":    ["SB","sb"],
-    "H":     ["H","Hits"],
-    "TB":    ["TB","TotalBases","Total Bases"],
-    "OBP":   ["OBP","obp","On-Base%"],
-    "AVG":   ["AVG","avg","BA"],
-    "SLG":   ["SLG","slg"],
-    "BB":    ["BB","bb"],
-    "SO":    ["SO","K","Strikeouts","so"],
-    "playerid": ["playerid","PlayerId","IDFANGRAPHS"],
-}
+# Position priority — prefer scarcer positions
+POS_PRIORITY = ["C","SS","2B","3B","CF","OF","LF","RF","1B","DH"]
 
-PIT_ALIASES = {
-    "Name":  ["Name","PlayerName","name"],
-    "Team":  ["Team","Tm","team"],
-    "Pos":   ["Pos","Position","pos","POS","Role"],
-    "IP":    ["IP","ip","InningsPitched"],
-    "W":     ["W","Wins","w"],
-    "K":     ["SO","K","Strikeouts","so"],
-    "ERA":   ["ERA","era"],
-    "WHIP":  ["WHIP","whip"],
-    "SV":    ["SV","sv","Saves"],
-    "HLD":   ["HLD","HD","Holds","hld"],
-    "QS":    ["QS","qs","QualityStarts"],
-    "BB":    ["BB","bb"],
-    "playerid": ["playerid","PlayerId","IDFANGRAPHS"],
-}
-
-def resolve_col(df, aliases):
-    col_lower = {c.lower(): c for c in df.columns}
-    for alias in aliases:
-        if alias.lower() in col_lower:
-            return col_lower[alias.lower()]
+def normalize_pos(p):
+    if not isinstance(p, str): return None
+    p = p.strip().upper()
+    if p in ("LF","RF","CF"): return "OF"
+    if p in ("C","SS","2B","3B","1B","DH","OF","SP","RP"): return p
     return None
 
-def extract(df, aliases, default=None):
-    col = resolve_col(df, aliases)
-    if col:
-        return df[col]
-    return pd.Series([default] * len(df), index=df.index)
+def fetch_positions():
+    """Fetch real positions from pybaseball fielding stats."""
+    try:
+        from pybaseball import fielding_stats
+        print("  Fetching position data from fielding stats...")
+        fielding = fielding_stats(2024, 2024, qual=1)
+        pos_map = {}
+        for _, row in fielding.iterrows():
+            name = str(row.get("Name","")).strip()
+            pos  = normalize_pos(str(row.get("Pos","")))
+            if not pos or not name: continue
+            if name not in pos_map:
+                pos_map[name] = pos
+            else:
+                cur = POS_PRIORITY.index(pos_map[name]) if pos_map[name] in POS_PRIORITY else 99
+                new = POS_PRIORITY.index(pos)           if pos           in POS_PRIORITY else 99
+                if new < cur: pos_map[name] = pos
+        print(f"  Got positions for {len(pos_map)} players")
+        return pos_map
+    except Exception as e:
+        print(f"  Could not fetch fielding positions: {e}")
+        return {}
 
 def normalize_name(name):
-    if not isinstance(name, str):
-        return ""
+    if not isinstance(name, str): return ""
     name = name.strip()
     name = re.sub(r"\s+(Jr\.?|Sr\.?|II|III|IV)$", "", name, flags=re.IGNORECASE)
     return name.lower()
 
+def f(val):
+    if val is None: return None
+    try:
+        v = float(val)
+        return None if np.isnan(v) else round(v, 4)
+    except: return None
+
+def get(row, *keys):
+    for k in keys:
+        if k in row and row[k] is not None:
+            return f(row[k])
+    return None
+
 def load_projections():
-    hitter_frames = []
-    pitcher_frames = []
-
+    hitter_frames, pitcher_frames = [], []
     for system, (h_file, p_file) in SYSTEM_FILES.items():
-        h_path = DATA_DIR / h_file
-        p_path = DATA_DIR / p_file
-
-        if h_path.exists():
+        for fpath, ftype, frames in [
+            (DATA_DIR/h_file, "hitter",  hitter_frames),
+            (DATA_DIR/p_file, "pitcher", pitcher_frames),
+        ]:
+            if not fpath.exists():
+                print(f"  - {system} {ftype}s not found")
+                continue
             try:
-                df = pd.read_csv(h_path)
-                row = {canon: extract(df, aliases) for canon, aliases in HIT_ALIASES.items()}
-                ndf = pd.DataFrame(row)
-                ndf["_system"] = system
-                ndf["_type"] = "hitter"
-                hitter_frames.append(ndf)
-                print(f"  + {system} hitters: {len(df)} rows")
+                df = pd.read_csv(fpath)
+                if ftype == "hitter" and "TB" not in df.columns:
+                    if all(c in df.columns for c in ["1B","2B","3B","HR"]):
+                        df["TB"] = df["1B"] + 2*df["2B"] + 3*df["3B"] + 4*df["HR"]
+                    elif all(c in df.columns for c in ["H","2B","3B","HR"]):
+                        df["TB"] = df["H"] + df["2B"] + 2*df["3B"] + 3*df["HR"]
+                df["_system"] = system
+                df["_type"]   = ftype
+                frames.append(df)
+                print(f"  + {system} {ftype}s: {len(df)} rows")
             except Exception as e:
-                print(f"  x {system} hitters: {e}")
-        else:
-            print(f"  - {system} hitters not found")
-
-        if p_path.exists():
-            try:
-                df = pd.read_csv(p_path)
-                row = {canon: extract(df, aliases) for canon, aliases in PIT_ALIASES.items()}
-                ndf = pd.DataFrame(row)
-                ndf["_system"] = system
-                ndf["_type"] = "pitcher"
-                pitcher_frames.append(ndf)
-                print(f"  + {system} pitchers: {len(df)} rows")
-            except Exception as e:
-                print(f"  x {system} pitchers: {e}")
-        else:
-            print(f"  - {system} pitchers not found")
+                print(f"  x {system} {ftype}s: {e}")
 
     hitters  = pd.concat(hitter_frames,  ignore_index=True) if hitter_frames  else pd.DataFrame()
     pitchers = pd.concat(pitcher_frames, ignore_index=True) if pitcher_frames else pd.DataFrame()
     return hitters, pitchers
 
-def merge_players(hitters, pitchers):
+def merge_players(hitters, pitchers, pos_map):
     players = {}
 
-    def _f(row, col):
-        v = row.get(col)
-        if v is None or (isinstance(v, float) and np.isnan(v)):
-            return None
-        try:
-            return round(float(v), 4)
-        except:
-            return None
-
-    def process_frame(df, ptype):
+    def process(df, ptype):
         for _, row in df.iterrows():
-            name = normalize_name(row.get("Name", ""))
-            if not name:
-                continue
+            name = normalize_name(str(row.get("Name", "")))
+            if not name: continue
             key = f"{name}_{ptype}"
             if key not in players:
+                raw_name = str(row.get("Name","")).strip()
+                # Use fielding position if available, fall back to CSV Pos column
+                csv_pos = normalize_pos(str(row.get("Pos",""))) or ""
+                real_pos = pos_map.get(raw_name, csv_pos)
                 players[key] = {
-                    "id": key,
-                    "name": str(row.get("Name","")).strip(),
-                    "team": str(row.get("Team","")).strip(),
-                    "pos": str(row.get("Pos","")).strip(),
-                    "type": ptype,
+                    "id":      key,
+                    "name":    raw_name,
+                    "team":    str(row.get("Team","")).strip(),
+                    "pos":     real_pos,
+                    "type":    ptype,
                     "systems": {},
                 }
             p = players[key]
-            sys_name = row["_system"]
+            if row.get("Team"): p["team"] = str(row["Team"]).strip()
 
             if ptype == "hitter":
-                stats = {
-                    "PA":  _f(row,"PA"),  "R":   _f(row,"R"),
-                    "HR":  _f(row,"HR"),  "RBI": _f(row,"RBI"),
-                    "SB":  _f(row,"SB"),  "H":   _f(row,"H"),
-                    "TB":  _f(row,"TB"),  "OBP": _f(row,"OBP"),
-                    "AVG": _f(row,"AVG"), "SLG": _f(row,"SLG"),
-                    "BB":  _f(row,"BB"),  "SO":  _f(row,"SO"),
+                p["systems"][row["_system"]] = {
+                    "G":    get(row, "G"),
+                    "PA":   get(row, "PA"),
+                    "R":    get(row, "R"),
+                    "HR":   get(row, "HR"),
+                    "RBI":  get(row, "RBI"),
+                    "SB":   get(row, "SB"),
+                    "H":    get(row, "H"),
+                    "TB":   get(row, "TB"),
+                    "AVG":  get(row, "AVG"),
+                    "OBP":  get(row, "OBP"),
+                    "SLG":  get(row, "SLG"),
+                    "wOBA": get(row, "wOBA"),
+                    "wRC+": get(row, "wRC+"),
+                    "BABIP":get(row, "BABIP"),
+                    "BB%":  get(row, "BB%"),
+                    "K%":   get(row, "K%"),
+                    "ISO":  get(row, "ISO"),
                 }
             else:
-                stats = {
-                    "IP":   _f(row,"IP"),   "W":    _f(row,"W"),
-                    "K":    _f(row,"K"),    "ERA":  _f(row,"ERA"),
-                    "WHIP": _f(row,"WHIP"), "SV":   _f(row,"SV"),
-                    "HLD":  _f(row,"HLD"),  "QS":   _f(row,"QS"),
-                    "BB":   _f(row,"BB"),
+                p["systems"][row["_system"]] = {
+                    "G":    get(row, "G"),
+                    "GS":   get(row, "GS"),
+                    "IP":   get(row, "IP"),
+                    "W":    get(row, "W"),
+                    "K":    get(row, "K", "SO"),
+                    "ERA":  get(row, "ERA"),
+                    "WHIP": get(row, "WHIP"),
+                    "SV":   get(row, "SV"),
+                    "HLD":  get(row, "HLD", "HD"),
+                    "QS":   get(row, "QS"),
+                    "BB":   get(row, "BB"),
+                    "FIP":  get(row, "FIP"),
                 }
 
-            p["systems"][sys_name] = stats
-            if row.get("Team") and str(row["Team"]).strip():
-                p["team"] = str(row["Team"]).strip()
-
-    if not hitters.empty:
-        process_frame(hitters, "hitter")
-    if not pitchers.empty:
-        process_frame(pitchers, "pitcher")
-
+    if not hitters.empty:  process(hitters,  "hitter")
+    if not pitchers.empty: process(pitchers, "pitcher")
     return list(players.values())
-
-def filter_qualified(players):
-    qualified = []
-    for p in players:
-        if p["type"] == "hitter":
-            pas = [s.get("PA") for s in p["systems"].values() if s.get("PA") is not None]
-            if np.mean(pas) >= MIN_PA if pas else False:
-                qualified.append(p)
-        else:
-            ips = [s.get("IP") for s in p["systems"].values() if s.get("IP") is not None]
-            if np.mean(ips) >= MIN_IP if ips else False:
-                qualified.append(p)
-    print(f"  Qualified: {len(qualified)} / {len(players)}")
-    return qualified
 
 def add_consensus(players):
     for p in players:
-        cats = (["PA","R","HR","RBI","SB","H","TB","OBP","AVG","SLG","BB","SO"]
+        cats = (["G","PA","R","HR","RBI","SB","H","TB","AVG","OBP","SLG",
+                 "wOBA","wRC+","BABIP","BB%","K%","ISO"]
                 if p["type"] == "hitter"
-                else ["IP","W","K","ERA","WHIP","SV","HLD","QS","BB"])
-        consensus = {}
+                else ["G","GS","IP","W","K","ERA","WHIP","SV","HLD","QS","BB","FIP"])
+        p["consensus"] = {}
         for cat in cats:
             vals = [s.get(cat) for s in p["systems"].values() if s.get(cat) is not None]
-            consensus[cat] = round(float(np.mean(vals)), 4) if vals else None
-        p["consensus"] = consensus
+            p["consensus"][cat] = round(float(np.mean(vals)), 4) if vals else None
     return players
 
 def add_disagreement(players):
     for p in players:
-        cats = HIT_CATS if p["type"] == "hitter" else PIT_CATS
+        cats = HIT_CATS + ["wOBA","wRC+"] if p["type"] == "hitter" else PIT_CATS
         dis = {}
+        overall_cvs = []
         for cat in cats:
             vals = [s.get(cat) for s in p["systems"].values() if s.get(cat) is not None]
             if len(vals) < 2:
@@ -233,8 +205,22 @@ def add_disagreement(players):
             std  = np.std(vals)
             cv   = float(std / abs(mean)) if abs(mean) > 0.001 else 0.0
             dis[cat] = round(cv, 4)
+            overall_cvs.append(cv)
         p["disagreement"] = dis
+        p["disagreement_score"] = round(float(np.mean(overall_cvs)), 4) if overall_cvs else 0.0
     return players
+
+def filter_qualified(players):
+    qualified = []
+    for p in players:
+        if p["type"] == "hitter":
+            pas = [s.get("PA") for s in p["systems"].values() if s.get("PA") is not None]
+            if pas and np.mean(pas) >= MIN_PA: qualified.append(p)
+        else:
+            ips = [s.get("IP") for s in p["systems"].values() if s.get("IP") is not None]
+            if ips and np.mean(ips) >= MIN_IP: qualified.append(p)
+    print(f"  Qualified: {len(qualified)} / {len(players)}")
+    return qualified
 
 def add_zscores_var(players):
     hitters  = [p for p in players if p["type"] == "hitter"]
@@ -249,8 +235,7 @@ def add_zscores_var(players):
             z = 0.0
             for cat in cats:
                 val = p["consensus"].get(cat)
-                if val is None:
-                    continue
+                if val is None: continue
                 mean, std = stats[cat]
                 zc = (val - mean) / std
                 z += -zc if cat in LOWER_BETTER else zc
@@ -270,11 +255,8 @@ def add_zscores_var(players):
     h_repl = h_sorted[h_slots]["zScore"] if len(h_sorted) > h_slots else 0
     p_repl = p_sorted[p_slots]["zScore"] if len(p_sorted) > p_slots else 0
 
-    for p in hitters:
-        p["VAR"] = round(p.get("zScore",0) - h_repl, 2)
-    for p in pitchers:
-        p["VAR"] = round(p.get("zScore",0) - p_repl, 2)
-
+    for p in hitters:  p["VAR"] = round(p.get("zScore",0) - h_repl, 2)
+    for p in pitchers: p["VAR"] = round(p.get("zScore",0) - p_repl, 2)
     return players
 
 def add_tiers(players):
@@ -296,50 +278,45 @@ def add_percentiles(players):
             vals = sorted([p["consensus"].get(cat) for p in pool
                           if p["consensus"].get(cat) is not None])
             n = len(vals)
-            if not n:
-                continue
+            if not n: continue
             for p in pool:
                 v = p["consensus"].get(cat)
                 pct = len([x for x in vals if x <= v]) / n if v is not None else None
                 p.setdefault("percentiles", {})[cat] = round(pct, 4) if pct is not None else None
 
-    compute(hitters,  HIT_CATS + ["AVG","SLG"])
-    compute(pitchers, PIT_CATS)
+    compute(hitters,  HIT_CATS + ["wOBA","wRC+","AVG","SLG","ISO"])
+    compute(pitchers, PIT_CATS + ["FIP"])
 
-    all_vars = sorted([p.get("VAR",0) for p in players])
+    all_vars = sorted([p.get("VAR",0)    for p in players])
     all_z    = sorted([p.get("zScore",0) for p in players])
     n = len(all_vars)
     for p in players:
-        pct = p.setdefault("percentiles", {})
-        v = p.get("VAR", 0)
-        z = p.get("zScore", 0)
-        pct["VAR"]    = round(len([x for x in all_vars if x <= v]) / n, 4)
-        pct["zScore"] = round(len([x for x in all_z   if x <= z]) / n, 4)
-
+        v = p.get("VAR",0)
+        z = p.get("zScore",0)
+        p.setdefault("percentiles",{})["VAR"]    = round(len([x for x in all_vars if x<=v])/n, 4)
+        p.setdefault("percentiles",{})["zScore"] = round(len([x for x in all_z    if x<=z])/n, 4)
     return players
 
 def add_scarcity(players):
     pos_groups = {}
     for p in players:
         pos = p.get("pos","?")
-        if pos not in pos_groups:
-            pos_groups[pos] = []
+        if pos not in pos_groups: pos_groups[pos] = []
         pos_groups[pos].append(p)
-
     scarcity = {}
     for pos, pool in pos_groups.items():
-        slots = ROSTER_SLOTS.get(pos, 1) * LEAGUE_SIZE
-        sorted_pool  = sorted(pool, key=lambda x: x.get("VAR",0), reverse=True)
-        starter_vars = [p["VAR"] for p in sorted_pool[:slots] if "VAR" in p]
-        bench_vars   = [p["VAR"] for p in sorted_pool[slots:slots+LEAGUE_SIZE] if "VAR" in p]
-        starter_avg  = float(np.mean(starter_vars)) if starter_vars else 0
-        bench_avg    = float(np.mean(bench_vars))   if bench_vars   else 0
+        slots       = ROSTER_SLOTS.get(pos, 1) * LEAGUE_SIZE
+        sorted_pool = sorted(pool, key=lambda x: x.get("VAR",0), reverse=True)
+        s_vars      = [p["VAR"] for p in sorted_pool[:slots]                  if "VAR" in p]
+        b_vars      = [p["VAR"] for p in sorted_pool[slots:slots+LEAGUE_SIZE] if "VAR" in p]
+        s_avg       = float(np.mean(s_vars)) if s_vars else 0
+        b_avg       = float(np.mean(b_vars)) if b_vars else 0
         scarcity[pos] = {
             "total":           len(pool),
             "starter_slots":   slots,
-            "starter_avg_var": round(starter_avg, 2),
-            "bench_avg_var":   round(bench_avg, 2),
-            "drop_off":        round(starter_avg - bench_avg, 2),
+            "starter_avg_var": round(s_avg, 2),
+            "bench_avg_var":   round(b_avg, 2),
+            "drop_off":        round(s_avg - b_avg, 2),
         }
     return scarcity
 
@@ -347,41 +324,34 @@ def flag_players(players):
     for p in players:
         p["flags"] = []
         if p["type"] == "hitter":
-            if (p["consensus"].get("PA") or 0) < 300:
-                p["flags"].append("part-time")
+            if (p["consensus"].get("PA") or 0) < 300: p["flags"].append("part-time")
         else:
-            if (p["consensus"].get("IP") or 0) < 100:
-                p["flags"].append("part-time")
+            if (p["consensus"].get("IP") or 0) < 100: p["flags"].append("part-time")
     return players
 
 def load_historical():
     history = {}
-    for fname, label in [("hitters_all.csv","hitter"), ("pitchers_all.csv","pitcher")]:
+    for fname in ["hitters_all.csv","pitchers_all.csv"]:
         path = HIST_DIR / fname
         if not path.exists():
             print(f"  - {fname} not found")
             continue
         try:
             df = pd.read_csv(path)
-            name_col = next((c for c in df.columns if c.lower() in ["name","playername"]), None)
+            name_col   = next((c for c in df.columns if c.lower() in ["name","playername"]), None)
             season_col = next((c for c in df.columns if c.lower() == "season"), None)
-            if not name_col:
-                print(f"  x {fname}: no Name column found")
-                continue
+            if not name_col: continue
             for _, row in df.iterrows():
                 name = normalize_name(str(row.get(name_col,"")))
-                if not name:
-                    continue
-                if name not in history:
-                    history[name] = []
+                if not name: continue
+                if name not in history: history[name] = []
                 entry = {}
                 if season_col:
                     entry["season"] = int(row[season_col]) if pd.notna(row[season_col]) else None
                 for col in df.columns:
-                    if col in (name_col, season_col, "IDfg","playerid"):
-                        continue
+                    if col in (name_col, season_col, "IDfg","playerid"): continue
                     try:
-                        entry[col] = round(float(row[col]), 4) if pd.notna(row[col]) else None
+                        entry[col] = round(float(row[col]),4) if pd.notna(row[col]) else None
                     except:
                         entry[col] = str(row[col]) if pd.notna(row[col]) else None
                 history[name].append(entry)
@@ -396,48 +366,45 @@ def main():
     print("Step 1: Loading projection CSVs...")
     hitters, pitchers = load_projections()
     if hitters.empty and pitchers.empty:
-        print("\nNo CSV files found. Add them to data/projections/ and try again.")
+        print("No CSV files found.")
         sys.exit(1)
 
-    print("\nStep 2: Merging players...")
-    players = merge_players(hitters, pitchers)
+    print("\nStep 2: Fetching real positions...")
+    pos_map = fetch_positions()
+
+    print("\nStep 3: Merging players...")
+    players = merge_players(hitters, pitchers, pos_map)
     print(f"  Total: {len(players)} unique players")
 
-    print("\nStep 3: Filtering qualified players...")
+    print("\nStep 4: Filtering qualified players...")
     players = filter_qualified(players)
 
-    print("\nStep 4: Computing stats...")
+    print("\nStep 5: Computing stats...")
     players = add_consensus(players)
     players = add_disagreement(players)
     players = add_zscores_var(players)
     players = add_tiers(players)
     players = add_percentiles(players)
 
-    print("\nStep 5: Position scarcity...")
+    print("\nStep 6: Position scarcity...")
     scarcity = add_scarcity(players)
 
-    print("\nStep 6: Flags...")
+    print("\nStep 7: Flags...")
     players = flag_players(players)
 
-    print("\nStep 7: Historical data...")
+    print("\nStep 8: Historical data...")
     history = load_historical()
     for p in players:
-        key = normalize_name(p["name"])
-        p["history"] = history.get(key, [])
+        p["history"] = history.get(normalize_name(p["name"]), [])
 
     players.sort(key=lambda x: x.get("VAR",0), reverse=True)
 
     output = {
         "generated": pd.Timestamp.now().isoformat(),
         "systems":   SYSTEMS,
-        "league": {
-            "size":         LEAGUE_SIZE,
-            "hit_cats":     HIT_CATS,
-            "pit_cats":     PIT_CATS,
-            "roster_slots": ROSTER_SLOTS,
-        },
-        "scarcity": scarcity,
-        "players":  players,
+        "league":    {"size":LEAGUE_SIZE,"hit_cats":HIT_CATS,"pit_cats":PIT_CATS,"roster_slots":ROSTER_SLOTS},
+        "scarcity":  scarcity,
+        "players":   players,
     }
 
     OUT_FILE.parent.mkdir(parents=True, exist_ok=True)
