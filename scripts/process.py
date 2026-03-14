@@ -23,7 +23,16 @@ HIT_CATS     = ["R","HR","RBI","SB","OBP","H","TB"]
 PIT_CATS     = ["W","K","ERA","WHIP","SV","HLD","QS"]
 LOWER_BETTER = {"ERA","WHIP"}
 MIN_PA       = 150
-MIN_IP       = 40
+MIN_IP       = 30   # lowered to catch injury-limited keepers
+
+# Players always included regardless of PA/IP (keepers etc.)
+ALWAYS_INCLUDE = {
+    "eury perez",
+    "will smith",
+    "zach neto",
+    "junior caminero",
+    "hunter brown",
+}
 SYSTEMS      = ["ATC","ZiPS","Steamer","THE BAT","Depth Charts"]
 
 ROOT     = Path(__file__).parent.parent
@@ -49,9 +58,15 @@ def normalize_pos(p):
     return None
 
 def fetch_positions():
+    """Fetch positions from all years.
+    For each player, use their most recent year.
+    Within that year, pick the position with the most games played.
+    Falls back to earlier years if not found in recent data.
+    """
     try:
         from pybaseball import fielding_stats
-        pos_map = {}
+        # {name: {year: {pos: games}}}
+        yearly = {}
         for year in [2022, 2023, 2024, 2025]:
             try:
                 print(f"  Fetching fielding positions {year}...")
@@ -60,14 +75,28 @@ def fetch_positions():
                     name = str(row.get("Name","")).strip()
                     pos  = normalize_pos(str(row.get("Pos","")))
                     if not pos or not name: continue
-                    if name not in pos_map:
-                        pos_map[name] = pos
-                    else:
-                        cur = POS_PRIORITY.index(pos_map[name]) if pos_map[name] in POS_PRIORITY else 99
-                        new = POS_PRIORITY.index(pos)           if pos           in POS_PRIORITY else 99
-                        if new < cur: pos_map[name] = pos
+                    games = float(row.get("G", 1) or 1)
+                    if name not in yearly:
+                        yearly[name] = {}
+                    if year not in yearly[name]:
+                        yearly[name][year] = {}
+                    # Accumulate games per position within a year
+                    yearly[name][year][pos] = yearly[name][year].get(pos, 0) + games
             except Exception as e:
                 print(f"  Could not fetch {year}: {e}")
+
+        # Build pos_map: most recent year, primary position by games played
+        pos_map = {}
+        for name, year_dict in yearly.items():
+            most_recent_year = max(year_dict.keys())
+            pos_games = year_dict[most_recent_year]
+            # Primary = position with most games, respecting scarcity as tiebreaker
+            primary = max(pos_games.items(), key=lambda x: (
+                x[1],                                                    # games played (primary)
+                -(POS_PRIORITY.index(x[0]) if x[0] in POS_PRIORITY else 99)  # scarcity tiebreak
+            ))[0]
+            pos_map[name] = primary
+
         print(f"  Got positions for {len(pos_map)} players")
         return pos_map
     except Exception as e:
@@ -75,9 +104,12 @@ def fetch_positions():
         return {}
 
 def fetch_pitcher_roles():
+    """Use most recent year's role for each pitcher.
+    Role determined by GS/G ratio — majority of appearances as starter = SP."""
     try:
         from pybaseball import pitching_stats
-        role_map = {}
+        # {name: {year: (gs, g)}}
+        yearly = {}
         for year in [2022, 2023, 2024, 2025]:
             try:
                 df = pitching_stats(year, year, qual=1)
@@ -85,11 +117,19 @@ def fetch_pitcher_roles():
                     name = str(row.get("Name","")).strip()
                     gs   = float(row.get("GS", 0) or 0)
                     g    = float(row.get("G",  1) or 1)
-                    role = "SP" if gs/g >= 0.5 else "RP"
-                    if name not in role_map:
-                        role_map[name] = role
+                    if name not in yearly:
+                        yearly[name] = {}
+                    yearly[name][year] = (gs, g)
             except Exception as e:
                 print(f"  Could not fetch pitcher roles {year}: {e}")
+
+        role_map = {}
+        for name, year_dict in yearly.items():
+            most_recent_year = max(year_dict.keys())
+            gs, g = year_dict[most_recent_year]
+            # SP if majority of appearances were starts
+            role_map[name] = "SP" if (g > 0 and gs/g >= 0.5) else "RP"
+
         print(f"  Got pitcher roles for {len(role_map)} pitchers")
         return role_map
     except Exception as e:
@@ -190,6 +230,28 @@ def merge_players(hitters, pitchers, pos_map, role_map):
                 }
     if not hitters.empty:  process(hitters,  "hitter")
     if not pitchers.empty: process(pitchers, "pitcher")
+
+    # Inject any keepers missing from projections as minimal entries
+    KEEPER_DEFAULTS = {
+        "eury perez":      {"name":"Eury Perez",      "team":"MIA","pos":"SP","type":"pitcher"},
+        "will smith":      {"name":"Will Smith",       "team":"LAD","pos":"C", "type":"hitter"},
+        "zach neto":       {"name":"Zach Neto",        "team":"LAA","pos":"SS","type":"hitter"},
+        "junior caminero": {"name":"Junior Caminero",  "team":"TB", "pos":"3B","type":"hitter"},
+        "hunter brown":    {"name":"Hunter Brown",     "team":"HOU","pos":"SP","type":"pitcher"},
+    }
+    existing = {normalize_name(p["name"]) for p in players.values()}
+    for key, defaults in KEEPER_DEFAULTS.items():
+        if key not in existing:
+            print(f"  + Injecting keeper: {defaults['name']}")
+            players[f"{key}_{defaults['type']}"] = {
+                "id":      f"{key}_{defaults['type']}",
+                "name":    defaults["name"],
+                "team":    defaults["team"],
+                "pos":     defaults["pos"],
+                "type":    defaults["type"],
+                "systems": {},
+            }
+
     return list(players.values())
 
 def add_consensus(players):
@@ -226,6 +288,10 @@ def add_disagreement(players):
 def filter_qualified(players):
     qualified = []
     for p in players:
+        name_key = normalize_name(p.get("name",""))
+        if name_key in ALWAYS_INCLUDE:
+            qualified.append(p)
+            continue
         if p["type"] == "hitter":
             pas = [s.get("PA") for s in p["systems"].values() if s.get("PA") is not None]
             if pas and np.mean(pas) >= MIN_PA: qualified.append(p)
@@ -434,15 +500,25 @@ def add_scarcity(players):
         slots       = ROSTER_SLOTS.get(pos, 1) * LEAGUE_SIZE
         sorted_pool = sorted(pool, key=lambda x: x.get("VAR",0), reverse=True)
 
-        vars_all = [p["VAR"] for p in pool if "VAR" in p]
-        if vars_all:
-            # Elite = top 20% of VAR within this position group, min VAR > 0
-            p80 = float(np.percentile(vars_all, 80))
-            elite_threshold = max(p80, 0.0)
-            elite_count = sum(1 for v in vars_all if v >= elite_threshold)
-        else:
-            elite_threshold = 0
-            elite_count = 0
+        sorted_by_var = sorted(pool, key=lambda x: x.get("VAR", 0), reverse=True)
+        vars_sorted = [p.get("VAR", 0) for p in sorted_by_var]
+
+        # Replacement level = VAR of the last rostered starter at this position
+        repl_idx = min(slots - 1, len(vars_sorted) - 1)
+        replacement_var = vars_sorted[repl_idx] if vars_sorted else 0.0
+
+        # Elite = players with VAR meaningfully above replacement
+        # Threshold = replacement + 25% of the gap between best and replacement
+        best_var = vars_sorted[0] if vars_sorted else 0.0
+        gap = max(best_var - replacement_var, 0.001)
+        elite_threshold = replacement_var + (gap * 0.25)
+        elite_count = sum(1 for v in vars_sorted if v >= elite_threshold)
+
+        # Drop-off steepness = how fast VAR falls from #1 starter to replacement
+        # Normalize by the best player's VAR so positions are comparable
+        top_half = vars_sorted[:max(slots // 2, 1)]
+        top_avg = float(np.mean(top_half)) if top_half else 0.0
+        steepness = round((top_avg - replacement_var) / max(abs(best_var), 0.001), 4)
 
         s_vars = [p["VAR"] for p in sorted_pool[:slots]                  if "VAR" in p]
         b_vars = [p["VAR"] for p in sorted_pool[slots:slots+LEAGUE_SIZE] if "VAR" in p]
@@ -450,17 +526,21 @@ def add_scarcity(players):
         b_avg  = float(np.mean(b_vars)) if b_vars else 0
 
         # scarcity_index < 1.0 = scarce (not enough elite players to fill slots)
-        scarcity_index = round(elite_count / max(slots, 1), 2)
+        # scarcity_index calculated after elite_count below
 
+        scarcity_index = round(elite_count / max(slots, 1), 2)
         scarcity[pos] = {
-            "total":            len(pool),
-            "starter_slots":    slots,
-            "elite_count":      elite_count,       # players above 66th pct VAR
-            "elite_var_threshold": round(elite_threshold, 2),  # VAR threshold for elite (80th pct)
-            "scarcity_index":   scarcity_index,     # < 1.0 = scarce
-            "starter_avg_var":  round(s_avg, 2),
-            "bench_avg_var":    round(b_avg, 2),
-            "drop_off":         round(s_avg - b_avg, 2),
+            "total":              len(pool),
+            "starter_slots":      slots,
+            "elite_count":        elite_count,
+            "elite_threshold":    round(float(elite_threshold), 2),  # min VAR to be elite
+            "replacement_var":    round(float(replacement_var), 2),  # last rostered starter VAR
+            "best_var":           round(float(best_var), 2),
+            "steepness":          steepness,   # higher = steeper cliff = scarcer
+            "scarcity_index":     scarcity_index,
+            "starter_avg_var":    round(s_avg, 2),
+            "bench_avg_var":      round(b_avg, 2),
+            "drop_off":           round(s_avg - b_avg, 2),
         }
     return scarcity
 
