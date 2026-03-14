@@ -1,7 +1,9 @@
 name: Deploy to GitHub Pages
+
 on:
   push:
     branches: [main]
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -9,25 +11,40 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: '3.11'
+
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: Install dependencies
-        run: pip install pandas numpy scikit-learn pybaseball
-      - name: Fetch 2025 data
-        run: python3 scripts/fetch_2025.py
-      - name: Run projection model
-        run: python3 model/projections.py
-      - name: Export JSON
-        run: PYTHONPATH=. python3 model/export_json.py
-      - name: Verify players.json was created
-        run: ls -la public/players.json
+
+      - name: Install Python dependencies
+        run: pip install -r scripts/requirements.txt
+
+      - name: Fetch historical data
+        run: |
+          mkdir -p data/raw
+          python - << 'PYEOF'
+          from pybaseball import batting_stats, pitching_stats
+          print("Fetching hitters 2022-2025...")
+          batting_stats(2022, 2025, qual=150).to_csv("data/raw/hitters_all.csv", index=False)
+          print("Fetching pitchers 2022-2025...")
+          pitching_stats(2022, 2025, qual=50).to_csv("data/raw/pitchers_all.csv", index=False)
+          print("Done.")
+          PYEOF
+
+      - name: Run processing script
+        run: python scripts/process.py
+
+      - name: Install Node dependencies
+        run: npm ci
+
       - name: Build frontend
-        run: npm ci && npm run build
-      - name: Deploy
+        run: npm run build
+
+      - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
