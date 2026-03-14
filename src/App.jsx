@@ -542,7 +542,7 @@ function ColumnHeaders({isHitter, showPct, isDraftBoard=false}) {
 }
 
 // ── Player row ────────────────────────────────────────────────────────────────
-function PlayerRow({player,rank,isSelected,isDrafted,isKeeper,isMyKeeper,onSelect,onDraft,showPct,per600,isDraftBoard=false}) {
+function PlayerRow({player,rank,isSelected,isDrafted,isOtherDraft,isKeeper,isMyKeeper,onSelect,onDraft,onOtherDraft,showPct,per600,isDraftBoard=false}) {
   const flags=player.flags??[];
   const c=player.consensus??{};
   const pa=c.PA||1;
@@ -556,8 +556,8 @@ function PlayerRow({player,rank,isSelected,isDrafted,isKeeper,isMyKeeper,onSelec
     <div onClick={()=>!isDrafted&&onSelect(player)||isDrafted&&onSelect(player)}
       style={{display:"flex",alignItems:"center",gap:6,padding:"6px 12px",
         borderRadius:7,cursor:"pointer",marginBottom:2,
-        background:isMyKeeper?"#0d1a0d":isSelected?"#131320":dimmed?"#0a0a0d":"#0d0d15",
-        border:isMyKeeper?"1px solid #00C89640":isSelected?"1px solid #4A9EFF45":"1px solid #131320",
+        background:isMyKeeper?"#0d1a0d":isOtherDraft?"#1a0d0d":isSelected?"#131320":dimmed?"#0a0a0d":"#0d0d15",
+        border:isMyKeeper?"1px solid #00C89640":isOtherDraft?"1px solid #F8717140":isSelected?"1px solid #4A9EFF45":"1px solid #131320",
         opacity:dimmed?0.35:1,transition:"all 0.1s"}}>
       <span style={{width:22,fontSize:10,color:"#2a2a3e",fontFamily:"'DM Mono',monospace",flexShrink:0}}>{rank}</span>
       <div style={{width:26,height:26,borderRadius:4,background:"#1a1a2e",border:"1px solid #2a2a3e",
@@ -568,7 +568,7 @@ function PlayerRow({player,rank,isSelected,isDrafted,isKeeper,isMyKeeper,onSelec
       <div style={{minWidth:140,maxWidth:180,flexShrink:0}}>
         <div style={{display:"flex",alignItems:"center",gap:4}}>
           <span style={{fontSize:13,fontWeight:600,
-            color:isMyKeeper?"#00C896":dimmed?"#2a2a3e":"#ddd",
+            color:isMyKeeper?"#00C896":isOtherDraft?"#F87171":dimmed?"#2a2a3e":"#ddd",
             textDecoration:dimmed?"line-through":"none",
             letterSpacing:"-0.2px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
             {player.name}
@@ -605,13 +605,23 @@ function PlayerRow({player,rank,isSelected,isDrafted,isKeeper,isMyKeeper,onSelec
       {isDraftBoard&&(
         <div style={{minWidth:52,flexShrink:0,textAlign:"right"}}>
           {!isKeeper&&(
-            <button onClick={e=>{e.stopPropagation();onDraft(player);}}
-              style={{padding:"3px 10px",borderRadius:5,fontSize:10,fontWeight:700,cursor:"pointer",
-                border:`1px solid ${isDrafted?"#F8717140":"#2a2a3e"}`,
-                background:isDrafted?"#F8717112":"#1a1a2e",
-                color:isDrafted?"#F87171":"#888"}}>
-              {isDrafted?"Undo":"Draft"}
-            </button>
+            <div style={{display:"flex",flexDirection:"column",gap:3}}>
+              <button onClick={e=>{e.stopPropagation();if(!isOtherDraft)onDraft(player);}}
+                style={{padding:"2px 8px",borderRadius:4,fontSize:9,fontWeight:700,cursor:isOtherDraft?"not-allowed":"pointer",
+                  border:`1px solid ${isDrafted&&!isOtherDraft?"#4A9EFF40":"#2a2a3e"}`,
+                  background:isDrafted&&!isOtherDraft?"#4A9EFF15":"#1a1a2e",
+                  color:isDrafted&&!isOtherDraft?"#4A9EFF":isOtherDraft?"#2a2a3e":"#888",
+                  opacity:isOtherDraft?0.4:1}}>
+                {isDrafted&&!isOtherDraft?"✓ Mine":"Mine"}
+              </button>
+              <button onClick={e=>{e.stopPropagation();if(!isDrafted||isOtherDraft)onOtherDraft(player);else if(!isOtherDraft)onOtherDraft(player);}}
+                style={{padding:"2px 8px",borderRadius:4,fontSize:9,fontWeight:700,cursor:"pointer",
+                  border:`1px solid ${isOtherDraft?"#F8717140":"#2a2a3e"}`,
+                  background:isOtherDraft?"#F8717115":"#1a1a2e",
+                  color:isOtherDraft?"#F87171":"#888"}}>
+                {isOtherDraft?"✓ Taken":"Taken"}
+              </button>
+            </div>
           )}
         </div>
       )}
@@ -830,7 +840,8 @@ export default function App() {
   const [per600,setPer600]     = useState(false);
   const [showPct,setShowPct]   = useState(false);
   // Draft state
-  const [drafted,setDrafted]     = useState(new Set());   // all drafted player ids
+  const [drafted,setDrafted]     = useState(new Set());   // all drafted (mine + others)
+  const [otherDrafted,setOtherDrafted] = useState(new Set()); // taken by other teams
   const [draftLog,setDraftLog]   = useState([]);           // [{pick, player}] — my picks only
   const [currentPick,setCurrentPick] = useState(1);
   const [draftPosFilter,setDraftPosFilter] = useState("All");
@@ -937,6 +948,21 @@ export default function App() {
     }
   },[drafted,draftLog,currentPick,myPickSet,myKeepers]);
 
+  const toggleOtherDraft = useCallback(player=>{
+    const isKeeper=myKeepers.some(k=>k.id===player.id);
+    if (isKeeper) return;
+    const isOther=otherDrafted.has(player.id);
+    if (isOther) {
+      // un-mark as other
+      setOtherDrafted(prev=>{const n=new Set(prev);n.delete(player.id);return n;});
+      setDrafted(prev=>{const n=new Set(prev);n.delete(player.id);return n;});
+    } else {
+      // mark as taken by other team
+      setOtherDrafted(prev=>{const n=new Set(prev);n.add(player.id);return n;});
+      setDrafted(prev=>{const n=new Set(prev);n.add(player.id);return n;});
+    }
+  },[otherDrafted,myKeepers]);
+
   if (loading) return <LoadingScreen/>;
   if (error)   return <ErrorScreen msg={error}/>;
 
@@ -969,7 +995,9 @@ export default function App() {
     </button>
   );
 
-  const isMyKeeper = id=>myKeepers.some(k=>k.id===id);
+  const isMyKeeper  = id=>myKeepers.some(k=>k.id===id);
+  const isOtherPick = id=>otherDrafted.has(id);
+  const isMyPick2   = id=>drafted.has(id)&&!otherDrafted.has(id)&&!isMyKeeper(id);
 
   const PlayerList=({list,isDraftBoard=false})=>{
     if (list.length===0) return <div style={{color:"#2a2a3e",fontSize:13,textAlign:"center",padding:40}}>No players found.</div>;
@@ -981,9 +1009,10 @@ export default function App() {
           <PlayerRow key={p.id} player={p} rank={i+1}
             isSelected={selected?.id===p.id}
             isDrafted={drafted.has(p.id)}
+            isOtherDraft={isOtherPick(p.id)}
             isKeeper={myKeepers.some(k=>k.id===p.id)||drafted.has(p.id)&&!myPickSet.has(currentPick)}
             isMyKeeper={isMyKeeper(p.id)}
-            onSelect={handleSelect} onDraft={toggleDraft}
+            onSelect={handleSelect} onDraft={toggleDraft} onOtherDraft={toggleOtherDraft}
             showPct={showPct} per600={per600} isDraftBoard={isDraftBoard}/>
         ))}
       </>
