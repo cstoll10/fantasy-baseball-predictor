@@ -13,8 +13,11 @@ import numpy as np
 
 warnings.filterwarnings("ignore")
 
-LEAGUE_SIZE  = 12
-POOL_SIZE    = 300
+LEAGUE_SIZE    = 12
+POOL_SIZE_HIT  = 600
+POOL_SIZE_PIT  = 700
+ROSTERED_HIT   = 12 * (1+1+1+1+1+3+1)   # 156 hitter slots
+ROSTERED_PIT   = 12 * (5+3+2)             # 120 pitcher slots
 ROSTER_SLOTS = {"C":1,"1B":1,"2B":1,"SS":1,"3B":1,"OF":3,"UTIL":1,"SP":5,"RP":3,"P":2,"BN":7}
 HIT_CATS     = ["R","HR","RBI","SB","OBP","H","TB"]
 PIT_CATS     = ["W","K","ERA","WHIP","SV","HLD","QS"]
@@ -235,8 +238,8 @@ def filter_qualified(players):
 def add_zscores_var(players):
     hitters  = [p for p in players if p["type"] == "hitter"]
     pitchers = [p for p in players if p["type"] == "pitcher"]
-    h_pool = sorted(hitters,  key=lambda x: x["consensus"].get("PA") or 0, reverse=True)[:POOL_SIZE]
-    p_pool = sorted(pitchers, key=lambda x: x["consensus"].get("IP") or 0, reverse=True)[:POOL_SIZE]
+    h_pool = sorted(hitters,  key=lambda x: x["consensus"].get("PA") or 0, reverse=True)[:POOL_SIZE_HIT]
+    p_pool = sorted(pitchers, key=lambda x: x["consensus"].get("IP") or 0, reverse=True)[:POOL_SIZE_PIT]
 
     def compute_z(pool, all_type, cats):
         stats = {}
@@ -283,8 +286,8 @@ def add_percentiles(players):
     pitchers = [p for p in players if p["type"] == "pitcher"]
 
     # Use top POOL_SIZE by PA/IP — percentiles only assigned within this pool
-    h_pool = sorted(hitters,  key=lambda x: x["consensus"].get("PA") or 0, reverse=True)[:POOL_SIZE]
-    p_pool = sorted(pitchers, key=lambda x: x["consensus"].get("IP") or 0, reverse=True)[:POOL_SIZE]
+    h_pool = sorted(hitters,  key=lambda x: x["consensus"].get("PA") or 0, reverse=True)[:POOL_SIZE_HIT]
+    p_pool = sorted(pitchers, key=lambda x: x["consensus"].get("IP") or 0, reverse=True)[:POOL_SIZE_PIT]
 
     def compute_within_pool(pool, cats):
         """Rank each player purely within the pool. Pool rank 1/300 = 0.33%, 300/300 = 100%."""
@@ -328,64 +331,134 @@ def add_percentiles(players):
 
 def add_fantasy_value(players):
     """
-    CWS  = Category Win Score: % of pool this player beats per category, averaged (0-100)
-    WFPTS = Weighted Fantasy Points: normalized 0-100 score per category, averaged (0-100)
+    Improved CWS and WFPTS with three enhancements:
+
+    1. Roster-adjusted CWS: compares against rostered players only (top 156 hitters / 120 pitchers)
+       to reflect actual weekly H2H competition, not fringe players.
+
+    2. Scarcity-weighted categories: categories with high spread (std dev / mean) across
+       rostered players are weighted more heavily — winning a scarce category is harder and
+       more valuable than winning a bunched one like AVG.
+
+    3. Weekly consistency adjustment: uses disagreement_score as a volatility proxy.
+       High disagreement = models can't agree = less reliable week-to-week contributor.
+       Applied as a small penalty: final score * (1 - 0.15 * disagreement_score).
     """
     hitters  = [p for p in players if p["type"] == "hitter"]
     pitchers = [p for p in players if p["type"] == "pitcher"]
 
-    def compute(pool, cats):
-        if not pool: return
-        cat_sorted = {}
-        for cat in cats:
-            vals = [p["consensus"].get(cat) for p in pool if p["consensus"].get(cat) is not None]
-            vals.sort()
-            cat_sorted[cat] = vals
+    def compute(all_pool, rostered_n, cats):
+        if not all_pool: return
 
-        for p in pool:
+        # Rostered pool = top N by VAR (the players you'll actually face weekly)
+        rostered = sorted(all_pool, key=lambda x: x.get("VAR", 0), reverse=True)[:rostered_n]
+
+        # Build per-category sorted lists from rostered pool
+        cat_data = {}
+        for cat in cats:
+            vals = [p["consensus"].get(cat) for p in rostered if p["consensus"].get(cat) is not None]
+            vals.sort()
+            if not vals:
+                cat_data[cat] = {"vals": [], "weight": 1.0}
+                continue
+            lb = cat in LOWER_BETTER
+            # Scarcity weight = coefficient of variation (std/mean) — higher spread = more valuable
+            mean = np.mean(vals)
+            std  = np.std(vals)
+            cv   = (std / abs(mean)) if abs(mean) > 0.001 else 0.001
+            cat_data[cat] = {"vals": vals, "weight": round(float(cv), 4), "lb": lb}
+
+        # Normalize weights so they sum to len(cats)
+        total_w = sum(d["weight"] for d in cat_data.values() if d["vals"])
+        if total_w > 0:
+            for cat in cats:
+                if cat_data[cat]["vals"]:
+                    cat_data[cat]["weight"] = cat_data[cat]["weight"] / total_w * len(cats)
+
+        for p in all_pool:
             cws_scores, wfpts_scores = [], []
             for cat in cats:
                 val = p["consensus"].get(cat)
                 if val is None: continue
-                sorted_vals = cat_sorted[cat]
-                n = len(sorted_vals)
-                if not n: continue
+                d = cat_data[cat]
+                if not d["vals"]: continue
+                lb  = d.get("lb", cat in LOWER_BETTER)
+                w   = d["weight"]
+                sorted_vals = d["vals"]
+                n   = len(sorted_vals)
+
+                # CWS: % of rostered players this player beats
                 beats = len([v for v in sorted_vals if v < val])
-                lb = cat in LOWER_BETTER
                 if lb: beats = n - beats - 1
-                cws_scores.append(beats / n * 100)
+                cws_scores.append((beats / n * 100) * w)
+
+                # WFPTS: normalized 0-100 within rostered pool
                 min_v, max_v = sorted_vals[0], sorted_vals[-1]
-                rng = max_v - min_v or 1
+                rng  = max_v - min_v or 1
                 norm = (val - min_v) / rng * 100
                 if lb: norm = 100 - norm
-                wfpts_scores.append(norm)
-            p["CWS"]   = round(float(np.mean(cws_scores)),  1) if cws_scores  else 0.0
-            p["WFPTS"] = round(float(np.mean(wfpts_scores)), 1) if wfpts_scores else 0.0
+                wfpts_scores.append(norm * w)
 
-    compute(hitters,  HIT_CATS)
-    compute(pitchers, PIT_CATS)
+            raw_cws   = float(np.mean(cws_scores))  / len(cats) * len(cats) if cws_scores  else 0.0
+            raw_wfpts = float(np.mean(wfpts_scores)) / len(cats) * len(cats) if wfpts_scores else 0.0
+
+            # Consistency adjustment: penalize volatile players
+            dis = p.get("disagreement_score", 0) or 0
+            consistency_factor = 1.0 - (0.15 * min(dis, 1.0))
+
+            p["CWS"]   = round(raw_cws   * consistency_factor, 1)
+            p["WFPTS"] = round(raw_wfpts * consistency_factor, 1)
+
+    compute(hitters,  ROSTERED_HIT, HIT_CATS)
+    compute(pitchers, ROSTERED_PIT, PIT_CATS)
     return players
 
 def add_scarcity(players):
+    """
+    For each position:
+    - total players at that position in the pool
+    - how many are above the 66th percentile of VAR (elite tier)
+    - starter slots needed across all 12 teams
+    - drop-off from starter to bench
+    - scarcity_index: ratio of elite players to starter slots needed
+      (< 1.0 = scarce, > 1.5 = deep)
+    """
     pos_groups = {}
     for p in players:
         pos = p.get("pos","?")
         if pos not in pos_groups: pos_groups[pos] = []
         pos_groups[pos].append(p)
+
     scarcity = {}
     for pos, pool in pos_groups.items():
         slots       = ROSTER_SLOTS.get(pos, 1) * LEAGUE_SIZE
         sorted_pool = sorted(pool, key=lambda x: x.get("VAR",0), reverse=True)
-        s_vars      = [p["VAR"] for p in sorted_pool[:slots]                  if "VAR" in p]
-        b_vars      = [p["VAR"] for p in sorted_pool[slots:slots+LEAGUE_SIZE] if "VAR" in p]
-        s_avg       = float(np.mean(s_vars)) if s_vars else 0
-        b_avg       = float(np.mean(b_vars)) if b_vars else 0
+
+        vars_all = [p["VAR"] for p in pool if "VAR" in p]
+        if vars_all:
+            p66 = float(np.percentile(vars_all, 66))
+            elite_count = sum(1 for v in vars_all if v >= p66)
+        else:
+            p66 = 0
+            elite_count = 0
+
+        s_vars = [p["VAR"] for p in sorted_pool[:slots]                  if "VAR" in p]
+        b_vars = [p["VAR"] for p in sorted_pool[slots:slots+LEAGUE_SIZE] if "VAR" in p]
+        s_avg  = float(np.mean(s_vars)) if s_vars else 0
+        b_avg  = float(np.mean(b_vars)) if b_vars else 0
+
+        # scarcity_index < 1.0 = scarce (not enough elite players to fill slots)
+        scarcity_index = round(elite_count / max(slots, 1), 2)
+
         scarcity[pos] = {
-            "total":           len(pool),
-            "starter_slots":   slots,
-            "starter_avg_var": round(s_avg, 2),
-            "bench_avg_var":   round(b_avg, 2),
-            "drop_off":        round(s_avg - b_avg, 2),
+            "total":            len(pool),
+            "starter_slots":    slots,
+            "elite_count":      elite_count,       # players above 66th pct VAR
+            "p66_var":          round(p66, 2),      # VAR threshold for elite
+            "scarcity_index":   scarcity_index,     # < 1.0 = scarce
+            "starter_avg_var":  round(s_avg, 2),
+            "bench_avg_var":    round(b_avg, 2),
+            "drop_off":         round(s_avg - b_avg, 2),
         }
     return scarcity
 
@@ -448,7 +521,7 @@ def main():
     print("\nStep 4: Filtering qualified players...")
     players = filter_qualified(players)
 
-    print(f"\nStep 5: Computing stats (pool = top {POOL_SIZE} per type)...")
+    print(f"\nStep 5: Computing stats (pool = top {POOL_SIZE_HIT} hit / {POOL_SIZE_PIT} pit)...")
     players = add_consensus(players)
     players = add_disagreement(players)
     players = add_zscores_var(players)
@@ -474,7 +547,7 @@ def main():
     output = {
         "generated": pd.Timestamp.now().isoformat(),
         "systems":   SYSTEMS,
-        "pool_size": POOL_SIZE,
+        "pool_size_hit": POOL_SIZE_HIT, "pool_size_pit": POOL_SIZE_PIT,
         "league":    {"size":LEAGUE_SIZE,"hit_cats":HIT_CATS,"pit_cats":PIT_CATS,"roster_slots":ROSTER_SLOTS},
         "scarcity":  scarcity,
         "players":   players,

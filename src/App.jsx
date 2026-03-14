@@ -398,7 +398,7 @@ function HistoricalPanel({player, skillPctFns}) {
 }
 
 // ── Player panel ──────────────────────────────────────────────────────────────
-function PlayerPanel({player,allPlayers,per600,showPct,onClose,onNavigate,skillPctFns,poolPcts}) {
+function PlayerPanel({player,allPlayers,per600,showPct,onClose,onNavigate,skillPctFns,poolPcts,scarcity}) {
   const [panelTab,setPanelTab]=useState("overview");
   if (!player) return null;
   const idx  = allPlayers.findIndex(p=>p.id===player.id);
@@ -445,6 +445,16 @@ function PlayerPanel({player,allPlayers,per600,showPct,onClose,onNavigate,skillP
           <div style={{fontSize:10,color:"#444",marginTop:3,fontFamily:"'DM Mono',monospace"}}>
             {player.type==="hitter"?`${Math.round(player.consensus?.PA||0)} PA`:`${Math.round(player.consensus?.IP||0)} IP`}
             {" · "}{Object.keys(player.systems||{}).length} sys
+            {(()=>{
+              const s = scarcity?.[player.pos];
+              if (!s) return null;
+              const si = s.scarcity_index;
+              const label = si < 0.8 ? "🔴 Scarce" : si < 1.2 ? "🟡 Moderate" : "🟢 Deep";
+              const color = si < 0.8 ? "#F87171" : si < 1.2 ? "#FBBF24" : "#00C896";
+              return <span style={{color,marginLeft:6,fontWeight:700}}>
+                {label} ({s.elite_count} elite / {s.starter_slots} slots)
+              </span>;
+            })()}
           </div>
         </div>
         <div style={{display:"flex",gap:4,flexShrink:0,marginLeft:8}}>
@@ -666,7 +676,8 @@ export default function App() {
       .catch(e=>{setError(e.message);setLoading(false);});
   },[]);
 
-  const players = data?.players??[];
+  const players  = data?.players??[];
+  const scarcity  = data?.scarcity??{};
 
   const hitterSkillPcts  = useMemo(()=>buildSkillPercentiles(players,"hitter"),  [players]);
   const pitcherSkillPcts = useMemo(()=>buildSkillPercentiles(players,"pitcher"), [players]);
@@ -843,6 +854,7 @@ export default function App() {
               per600={per600} showPct={showPct}
               skillPctFns={getSkillPcts(selected)}
               poolPcts={poolPcts}
+              scarcity={scarcity}
               onClose={()=>setSelected(null)} onNavigate={handleNavigate}/>
           )}
         </div>
