@@ -296,14 +296,17 @@ def add_percentiles(players):
 
     compute(h_pool, hitters,  HIT_CATS + ["wOBA","wRC+","AVG","SLG","ISO"])
     compute(p_pool, pitchers, PIT_CATS + ["FIP"])
-    all_vars = sorted([p.get("VAR",0)    for p in players])
-    all_z    = sorted([p.get("zScore",0) for p in players])
-    n = len(all_vars)
-    for p in players:
-        v = p.get("VAR",0)
-        z = p.get("zScore",0)
-        p.setdefault("percentiles",{})["VAR"]    = round(len([x for x in all_vars if x<=v])/n, 4)
-        p.setdefault("percentiles",{})["zScore"] = round(len([x for x in all_z    if x<=z])/n, 4)
+
+    # VAR, zScore, CWS, WFPTS percentiles — use top-300 pool per type as reference
+    for ptype, pool, all_type in [("hitter", h_pool, hitters), ("pitcher", p_pool, pitchers)]:
+        for key in ["VAR","zScore","CWS","WFPTS"]:
+            pool_vals = sorted([p.get(key,0) for p in pool if p.get(key) is not None])
+            n = len(pool_vals)
+            if not n: continue
+            for p in all_type:
+                v = p.get(key, 0)
+                pct = len([x for x in pool_vals if x <= v]) / n
+                p.setdefault("percentiles",{})[key] = round(min(float(pct), 1.0), 4)
     return players
 
 def add_fantasy_value(players):

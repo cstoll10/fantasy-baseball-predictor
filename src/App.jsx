@@ -464,12 +464,11 @@ function PlayerPanel({player,allPlayers,per600,showPct,onClose,onNavigate,skillP
       {/* VAR · Z · CWS · WFPTS */}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}}>
         {[
-          ["VAR",    player.VAR,    "#4A9EFF", "Value over repl.",  poolPcts?.VAR],
-          ["Z-Score",player.zScore, "#A78BFA", "Category z-score",  poolPcts?.zScore],
-          ["CWS",    player.CWS,    "#00C896", "Category win score", poolPcts?.CWS],
-          ["WFPTS",  player.WFPTS,  "#FB923C", "Weighted fant. pts", poolPcts?.WFPTS],
-        ].map(([lbl,val,c,sub,pctFn])=>{
-          const pct = pctFn?.(val);
+          ["VAR",    player.VAR,    "#4A9EFF", "Value over repl.",   player.percentiles?.VAR],
+          ["Z-Score",player.zScore, "#A78BFA", "Category z-score",   player.percentiles?.zScore],
+          ["CWS",    player.CWS,    "#00C896", "Category win score",  player.percentiles?.CWS],
+          ["WFPTS",  player.WFPTS,  "#FB923C", "Weighted fant. pts",  player.percentiles?.WFPTS],
+        ].map(([lbl,val,c,sub,pct])=>{
           const ord = ordinal(pct);
           return (
             <div key={lbl} style={{background:c+"10",border:`1px solid ${c}25`,borderRadius:8,
@@ -713,19 +712,13 @@ export default function App() {
   const sorted = useMemo(()=>[...filtered].sort((a,b)=>getSortVal(b,sortBy)-getSortVal(a,sortBy))
   ,[filtered, sortBy, per600]);
 
-  // Pool percentiles for VAR, zScore, WFPTS (for the panel display)
-  const poolPcts = useMemo(()=>{
-    const build = (arr, key) => {
-      const vals = arr.map(p=>p[key]).filter(v=>v!=null).sort((a,b)=>a-b);
-      return v => v==null?null: vals.filter(x=>x<=v).length/vals.length;
-    };
-    return {
-      VAR:    build(players, "VAR"),
-      zScore: build(players, "zScore"),
-      WFPTS:  build(players, "WFPTS"),
-      CWS:    build(players, "CWS"),
-    };
-  },[players]);
+  // Pool percentiles stored server-side in player.percentiles — just pass a lookup fn
+  const poolPcts = useMemo(()=>({
+    VAR:    v => null, // resolved per-player via player.percentiles.VAR
+    zScore: v => null,
+    WFPTS:  v => null,
+    CWS:    v => null,
+  }),[]);
 
   const handleSelect   = useCallback(p=>setSelected(s=>s?.id===p.id?null:p),[]);
   const handleNavigate = useCallback(dir=>{
