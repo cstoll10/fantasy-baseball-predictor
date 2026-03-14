@@ -3,50 +3,51 @@ import { useState, useEffect, useMemo } from "react";
 const LEAGUE_SIZE  = 12;
 const HIT_CATS = ["R","HR","RBI","SB","OBP","H","TB"];
 const PIT_CATS = ["W","K","ERA","WHIP","SV","HLD","QS"];
-const LOWER_BETTER = new Set(["ERA","WHIP","K%","BB%"]);
-const LOWER_BETTER_SKILLS = new Set(["K%","BB%","BABIP","GB%","LD%","LOB%"]);
+const LOWER_BETTER = new Set(["ERA","WHIP"]);
 const SYSTEMS = ["ATC","ZiPS","Steamer","THE BAT","Depth Charts"];
 const SYS_COLORS = {
   "ATC":"#4A9EFF","ZiPS":"#A78BFA","Steamer":"#00C896",
   "THE BAT":"#FB923C","Depth Charts":"#F472B6",
 };
-const TIER_COLORS = { 1:"#00C896",2:"#4A9EFF",3:"#A78BFA",4:"#6B7280",5:"#F87171" };
 const HIT_DISPLAY = ["G","HR","R","RBI","SB","AVG","OBP","SLG","wOBA","wRC+"];
 const PIT_DISPLAY = ["G","W","K","ERA","WHIP","SV","HLD","QS"];
 const HIT_POSITIONS = ["All","C","1B","2B","3B","SS","OF","DH","UTIL"];
 const PIT_POSITIONS = ["All","SP","RP"];
 
 const HIT_SKILLS = [
-  {key:"BB%",   label:"BB%",      fmt:"pct",  higherBetter:true},
-  {key:"K%",    label:"K%",       fmt:"pct",  higherBetter:false},
-  {key:"BABIP", label:"BABIP",    fmt:"avg",  higherBetter:true},
-  {key:"wOBA",  label:"wOBA",     fmt:"avg",  higherBetter:true},
-  {key:"EV",    label:"Exit Velo",fmt:"dec1", higherBetter:true},
-  {key:"LA",    label:"Launch Ang",fmt:"dec1",higherBetter:false},
-  {key:"Barrel%",label:"Barrel%", fmt:"pct",  higherBetter:true},
-  {key:"HardHit%",label:"HardHit%",fmt:"pct", higherBetter:true},
-  {key:"xBA",   label:"xBA",      fmt:"avg",  higherBetter:true},
-  {key:"Pull%", label:"Pull%",    fmt:"pct",  higherBetter:false},
-  {key:"FB%",   label:"FB%",      fmt:"pct",  higherBetter:false},
-  {key:"LD%",   label:"LD%",      fmt:"pct",  higherBetter:true},
-  {key:"GB%",   label:"GB%",      fmt:"pct",  higherBetter:false},
-  {key:"WAR",   label:"WAR",      fmt:"dec1", higherBetter:true},
+  {key:"BB%",    label:"BB%",       fmt:"pct",  higherBetter:true},
+  {key:"K%",     label:"K%",        fmt:"pct",  higherBetter:false},
+  {key:"BABIP",  label:"BABIP",     fmt:"avg",  higherBetter:true},
+  {key:"wOBA",   label:"wOBA",      fmt:"avg",  higherBetter:true},
+  {key:"EV",     label:"Exit Velo", fmt:"dec1", higherBetter:true},
+  {key:"LA",     label:"Launch Ang",fmt:"dec1", higherBetter:false},
+  {key:"Barrel%",label:"Barrel%",   fmt:"pct",  higherBetter:true},
+  {key:"HardHit%",label:"HardHit%", fmt:"pct",  higherBetter:true},
+  {key:"xBA",    label:"xBA",       fmt:"avg",  higherBetter:true},
+  {key:"Pull%",  label:"Pull%",     fmt:"pct",  higherBetter:false},
+  {key:"FB%",    label:"FB%",       fmt:"pct",  higherBetter:false},
+  {key:"LD%",    label:"LD%",       fmt:"pct",  higherBetter:true},
+  {key:"GB%",    label:"GB%",       fmt:"pct",  higherBetter:false},
+  {key:"WAR",    label:"WAR",       fmt:"dec1", higherBetter:true},
 ];
 
 const PIT_SKILLS = [
-  {key:"K%",    label:"K%",       fmt:"pct",  higherBetter:true},
-  {key:"BB%",   label:"BB%",      fmt:"pct",  higherBetter:false},
-  {key:"BABIP", label:"BABIP",    fmt:"avg",  higherBetter:false},
-  {key:"FIP",   label:"FIP",      fmt:"avg",  higherBetter:false},
-  {key:"GB%",   label:"GB%",      fmt:"pct",  higherBetter:true},
-  {key:"LD%",   label:"LD%",      fmt:"pct",  higherBetter:false},
-  {key:"LOB%",  label:"LOB%",     fmt:"pct",  higherBetter:true},
-  {key:"WAR",   label:"WAR",      fmt:"dec1", higherBetter:true},
+  {key:"K%",    label:"K%",    fmt:"pct",  higherBetter:true},
+  {key:"BB%",   label:"BB%",   fmt:"pct",  higherBetter:false},
+  {key:"BABIP", label:"BABIP", fmt:"avg",  higherBetter:false},
+  {key:"FIP",   label:"FIP",   fmt:"avg",  higherBetter:false},
+  {key:"GB%",   label:"GB%",   fmt:"pct",  higherBetter:true},
+  {key:"LD%",   label:"LD%",   fmt:"pct",  higherBetter:false},
+  {key:"LOB%",  label:"LOB%",  fmt:"pct",  higherBetter:true},
+  {key:"WAR",   label:"WAR",   fmt:"dec1", higherBetter:true},
 ];
 
-// Historical stat keys to show
 const HIT_HIST_STATS = ["G","PA","HR","R","RBI","SB","AVG","OBP","SLG","wOBA","WAR"];
 const PIT_HIST_STATS = ["G","GS","IP","W","SO","ERA","WHIP","FIP","WAR"];
+
+// Overview stat cards — hitters and pitchers
+const HIT_OVERVIEW = ["HR","RBI","R","SB","AVG","OBP","SLG","wOBA","wRC+","H","TB"];
+const PIT_OVERVIEW = ["W","K","ERA","WHIP","SV","HLD","QS","FIP"];
 
 function pctColor(pct, lowerBetter=false) {
   const ep = lowerBetter && pct!=null ? 1-pct : pct;
@@ -80,7 +81,7 @@ function scaleTo600(val, cat, pa) {
 }
 
 function ordinal(pct) {
-  if (pct==null) return "—";
+  if (pct==null) return null;
   const n = Math.round(pct*100);
   if (n===100) return "99th";
   const s=["th","st","nd","rd"];
@@ -96,17 +97,17 @@ function Sparkline({values, higherBetter}) {
   const w=60, h=18;
   const pts = values.map((v,i)=>{
     const x=(i/(values.length-1))*w;
-    const y=v!=null ? h-((v-min)/range)*h : null;
-    return y!=null ? `${x},${y}` : null;
+    const y=v!=null?h-((v-min)/range)*h:null;
+    return y!=null?`${x},${y}`:null;
   }).filter(Boolean).join(" ");
   const last=valid[valid.length-1], prev=valid[valid.length-2];
-  const good = higherBetter ? last>=prev : last<=prev;
-  const color = good?"#00C896":"#F87171";
+  const good=higherBetter?last>=prev:last<=prev;
+  const color=good?"#00C896":"#F87171";
   return (
     <svg width={w} height={h} style={{verticalAlign:"middle",overflow:"visible"}}>
       <polyline points={pts} fill="none" stroke={color} strokeWidth={1.5}/>
       {values.map((v,i)=>{
-        if (v==null) return null;
+        if(v==null) return null;
         const x=(i/(values.length-1))*w;
         const y=h-((v-min)/range)*h;
         return <circle key={i} cx={x} cy={y} r={i===values.length-1?2.5:1.5}
@@ -127,6 +128,32 @@ function DisBadge({cv}) {
   );
 }
 
+// ── Stat card (overview grid) ─────────────────────────────────────────────────
+function StatCard({cat, val, pct}) {
+  const lb  = LOWER_BETTER.has(cat);
+  const ep  = lb && pct!=null ? 1-pct : pct;
+  const color = pctColor(ep);
+  const ord = ordinal(ep);
+  return (
+    <div style={{background:"#111118",border:"1px solid #1a1a2e",borderRadius:8,
+      padding:"10px 12px",display:"flex",flexDirection:"column",gap:4}}>
+      <div style={{fontSize:9,color:"#555",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.6px"}}>{cat}</div>
+      <div style={{fontSize:22,fontWeight:700,color,fontFamily:"'DM Mono',monospace",lineHeight:1}}>
+        {fmtStat(val,cat)}
+      </div>
+      <div>
+        <div style={{height:3,background:"#1a1a2e",borderRadius:2,marginBottom:3,overflow:"hidden"}}>
+          <div style={{height:"100%",width:`${(ep??0)*100}%`,background:color,borderRadius:2,transition:"width 0.5s"}}/>
+        </div>
+        <div style={{fontSize:9,color:ord?color:"#333",fontFamily:"'DM Mono',monospace"}}>
+          {ord||"—"}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── System table ──────────────────────────────────────────────────────────────
 function SystemTable({player,per600,cats}) {
   const available=SYSTEMS.filter(s=>player.systems?.[s]);
   if (!available.length) return <div style={{color:"#444",fontSize:12}}>No system data.</div>;
@@ -178,6 +205,7 @@ function SystemTable({player,per600,cats}) {
   );
 }
 
+// ── Disagreement panel ────────────────────────────────────────────────────────
 function DisagreementPanel({player}) {
   const cats=player.type==="hitter"?HIT_CATS:PIT_CATS;
   return (
@@ -203,132 +231,98 @@ function DisagreementPanel({player}) {
   );
 }
 
-// ── Skills tab ────────────────────────────────────────────────────────────────
+// ── Skills panel ──────────────────────────────────────────────────────────────
 function SkillsPanel({player}) {
-  const skills = player.type==="hitter" ? HIT_SKILLS : PIT_SKILLS;
-  const history = player.history || [];
+  const skills  = player.type==="hitter" ? HIT_SKILLS : PIT_SKILLS;
+  const history = player.history||[];
   const seasons = [...new Set(history.map(h=>h.season).filter(Boolean))].sort();
-
   return (
     <div style={{background:"#0f0f18",border:"1px solid #1a1a2e",borderRadius:8,padding:14}}>
       <div style={{fontSize:9,color:"#444",fontWeight:700,marginBottom:12,
-        textTransform:"uppercase",letterSpacing:"0.8px"}}>
-        Skill Metrics — Year over Year
-      </div>
-
-      {/* Header row */}
+        textTransform:"uppercase",letterSpacing:"0.8px"}}>Skill Metrics — Year over Year</div>
       <div style={{display:"grid",
-        gridTemplateColumns:`110px 60px repeat(${seasons.length}, 52px)`,
+        gridTemplateColumns:`110px 60px repeat(${Math.max(seasons.length,1)}, 52px)`,
         gap:4,marginBottom:6,paddingBottom:6,borderBottom:"1px solid #1a1a2e"}}>
         <span style={{fontSize:9,color:"#333",fontWeight:700}}>Stat</span>
         <span style={{fontSize:9,color:"#333",fontWeight:700,textAlign:"center"}}>Trend</span>
-        {seasons.map(s=>(
-          <span key={s} style={{fontSize:9,color:"#444",fontWeight:700,textAlign:"right"}}>{s}</span>
-        ))}
+        {seasons.map(s=><span key={s} style={{fontSize:9,color:"#444",fontWeight:700,textAlign:"right"}}>{s}</span>)}
       </div>
-
       {skills.map(skill=>{
-        const vals = seasons.map(s=>{
-          const h = history.find(h=>h.season===s);
-          return h ? h[skill.key]??null : null;
+        const vals=seasons.map(s=>{
+          const h=history.find(h=>h.season===s);
+          return h?h[skill.key]??null:null;
         });
-        const hasData = vals.some(v=>v!=null);
-        const latest  = vals[vals.length-1];
-
+        const hasData=vals.some(v=>v!=null);
         return (
           <div key={skill.key} style={{display:"grid",
-            gridTemplateColumns:`110px 60px repeat(${seasons.length}, 52px)`,
+            gridTemplateColumns:`110px 60px repeat(${Math.max(seasons.length,1)}, 52px)`,
             gap:4,padding:"4px 0",borderBottom:"1px solid #0f0f1a",alignItems:"center"}}>
             <span style={{fontSize:11,color:"#666"}}>{skill.label}</span>
             <span style={{textAlign:"center"}}>
-              {hasData ? <Sparkline values={vals} higherBetter={skill.higherBetter}/> : <span style={{color:"#2a2a3e",fontSize:10}}>—</span>}
+              {hasData?<Sparkline values={vals} higherBetter={skill.higherBetter}/>:<span style={{color:"#2a2a3e",fontSize:10}}>—</span>}
             </span>
             {vals.map((v,i)=>{
-              const isLatest = i===vals.length-1;
-              const prev = i>0 ? vals[i-1] : null;
-              const improved = v!=null && prev!=null && (skill.higherBetter ? v>prev : v<prev);
-              const declined = v!=null && prev!=null && (skill.higherBetter ? v<prev : v>prev);
+              const isLatest=i===vals.length-1;
+              const prev=i>0?vals[i-1]:null;
+              const improved=v!=null&&prev!=null&&(skill.higherBetter?v>prev:v<prev);
+              const declined=v!=null&&prev!=null&&(skill.higherBetter?v<prev:v>prev);
               return (
-                <span key={i} style={{textAlign:"right",
-                  fontFamily:"'DM Mono',monospace",fontSize:10,
+                <span key={i} style={{textAlign:"right",fontFamily:"'DM Mono',monospace",fontSize:10,
                   fontWeight:isLatest?700:400,
-                  color: v==null?"#2a2a3e":
-                    isLatest? (improved?"#00C896":declined?"#F87171":"#ddd") : "#555"}}>
-                  {fmtSkill(v, skill.fmt)}
+                  color:v==null?"#2a2a3e":isLatest?(improved?"#00C896":declined?"#F87171":"#ddd"):"#555"}}>
+                  {fmtSkill(v,skill.fmt)}
                 </span>
               );
             })}
           </div>
         );
       })}
-
-      {seasons.length===0&&(
-        <div style={{color:"#333",fontSize:12,textAlign:"center",padding:20}}>
-          No historical skill data available
-        </div>
-      )}
+      {seasons.length===0&&<div style={{color:"#333",fontSize:12,textAlign:"center",padding:20}}>No historical skill data</div>}
     </div>
   );
 }
 
-// ── Historical tab ────────────────────────────────────────────────────────────
+// ── Historical panel ──────────────────────────────────────────────────────────
 function HistoricalPanel({player}) {
-  const history  = player.history || [];
+  const history  = player.history||[];
   const seasons  = [...new Set(history.map(h=>h.season).filter(Boolean))].sort();
-  const statKeys = player.type==="hitter" ? HIT_HIST_STATS : PIT_HIST_STATS;
-
-  if (seasons.length===0) return (
-    <div style={{background:"#0f0f18",border:"1px solid #1a1a2e",borderRadius:8,padding:20,
-      textAlign:"center",color:"#333",fontSize:12}}>
-      No historical data available
-    </div>
-  );
-
+  const statKeys = player.type==="hitter"?HIT_HIST_STATS:PIT_HIST_STATS;
   return (
-    <div style={{background:"#0f0f18",border:"1px solid #1a1a2e",borderRadius:8,padding:14}}>
-      <div style={{fontSize:9,color:"#444",fontWeight:700,marginBottom:12,
-        textTransform:"uppercase",letterSpacing:"0.8px"}}>
-        Season Stats (2022–2025)
-      </div>
-      <div style={{overflowX:"auto"}}>
-        <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,fontFamily:"'DM Mono',monospace"}}>
-          <thead>
-            <tr>
-              <th style={{textAlign:"left",padding:"4px 6px",color:"#444",fontSize:10,fontWeight:700}}>Season</th>
-              {statKeys.map(k=>(
-                <th key={k} style={{textAlign:"right",padding:"4px 5px",color:"#444",fontSize:10,fontWeight:700}}>{k}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {seasons.map(season=>{
-              const h = history.find(x=>x.season===season);
-              return (
-                <tr key={season} style={{borderTop:"1px solid #1a1a2e"}}>
-                  <td style={{padding:"5px 6px",color:"#4A9EFF",fontWeight:700}}>{season}</td>
-                  {statKeys.map(k=>{
-                    const v = h?.[k];
-                    return (
-                      <td key={k} style={{textAlign:"right",padding:"5px 5px",color:v!=null?"#bbb":"#2a2a3e"}}>
-                        {v!=null ? fmtStat(v,k) : "—"}
-                      </td>
-                    );
-                  })}
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      {seasons.length===0?(
+        <div style={{background:"#0f0f18",border:"1px solid #1a1a2e",borderRadius:8,
+          padding:20,textAlign:"center",color:"#333",fontSize:12}}>No historical data</div>
+      ):(
+        <div style={{background:"#0f0f18",border:"1px solid #1a1a2e",borderRadius:8,padding:14}}>
+          <div style={{fontSize:9,color:"#444",fontWeight:700,marginBottom:12,
+            textTransform:"uppercase",letterSpacing:"0.8px"}}>Season Stats (2022–2025)</div>
+          <div style={{overflowX:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,fontFamily:"'DM Mono',monospace"}}>
+              <thead>
+                <tr>
+                  <th style={{textAlign:"left",padding:"4px 6px",color:"#444",fontSize:10,fontWeight:700}}>Season</th>
+                  {statKeys.map(k=><th key={k} style={{textAlign:"right",padding:"4px 5px",color:"#444",fontSize:10,fontWeight:700}}>{k}</th>)}
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Historical skills below */}
-      <div style={{marginTop:16}}>
-        <div style={{fontSize:9,color:"#444",fontWeight:700,marginBottom:10,
-          textTransform:"uppercase",letterSpacing:"0.8px"}}>
-          Historical Skills
+              </thead>
+              <tbody>
+                {seasons.map(season=>{
+                  const h=history.find(x=>x.season===season);
+                  return (
+                    <tr key={season} style={{borderTop:"1px solid #1a1a2e"}}>
+                      <td style={{padding:"5px 6px",color:"#4A9EFF",fontWeight:700}}>{season}</td>
+                      {statKeys.map(k=>{
+                        const v=h?.[k];
+                        return <td key={k} style={{textAlign:"right",padding:"5px 5px",color:v!=null?"#bbb":"#2a2a3e"}}>{v!=null?fmtStat(v,k):"—"}</td>;
+                      })}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
-        <SkillsPanel player={player}/>
-      </div>
+      )}
+      <SkillsPanel player={player}/>
     </div>
   );
 }
@@ -337,10 +331,11 @@ function HistoricalPanel({player}) {
 function PlayerPanel({player,allPlayers,per600,showPct,onClose,onNavigate}) {
   const [panelTab,setPanelTab]=useState("overview");
   if (!player) return null;
-  const tc   = TIER_COLORS[player.tier]??"#6B7280";
   const idx  = allPlayers.findIndex(p=>p.id===player.id);
   const cats = player.type==="hitter"?HIT_CATS:PIT_CATS;
+  const overviewCats = player.type==="hitter"?HIT_OVERVIEW:PIT_OVERVIEW;
   const flags= player.flags??[];
+  const war  = player.consensus?.WAR ?? player.history?.slice(-1)[0]?.WAR ?? null;
 
   const PT=(t,label)=>(
     <button key={t} onClick={()=>setPanelTab(t)}
@@ -358,18 +353,34 @@ function PlayerPanel({player,allPlayers,per600,showPct,onClose,onNavigate}) {
       {/* Header */}
       <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:14}}>
         <div style={{flex:1,minWidth:0}}>
-          <div style={{fontSize:15,fontWeight:700,color:"#f0f0f0",letterSpacing:"-0.3px",
+          <div style={{fontSize:16,fontWeight:700,color:"#f0f0f0",letterSpacing:"-0.3px",
             overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{player.name}</div>
-          <div style={{fontSize:11,color:"#444",marginTop:3,display:"flex",gap:6,flexWrap:"wrap"}}>
-            <span>{player.team}</span><span>·</span>
-            <span>{player.pos||"?"}</span><span>·</span>
-            <span style={{color:tc}}>Tier {player.tier}</span>
+          {/* Team · Pos · WAR */}
+          <div style={{fontSize:12,color:"#666",marginTop:4,display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+            <span>{player.team}</span>
+            <span style={{color:"#2a2a3e"}}>·</span>
+            <span>{player.pos||"?"}</span>
+            {war!=null&&(
+              <>
+                <span style={{color:"#2a2a3e"}}>·</span>
+                <span style={{color:"#A78BFA",fontFamily:"'DM Mono',monospace",fontWeight:700}}>
+                  {war>0?"+":""}{Number(war).toFixed(1)} WAR
+                </span>
+              </>
+            )}
             {flags.map(f=>(
               <span key={f} style={{color:"#F87171",background:"#F8717115",
                 border:"1px solid #F8717130",borderRadius:3,padding:"0 4px",fontSize:9,fontWeight:700}}>
                 {f.toUpperCase()}
               </span>
             ))}
+          </div>
+          {/* PA / IP · systems count */}
+          <div style={{fontSize:10,color:"#444",marginTop:3,fontFamily:"'DM Mono',monospace"}}>
+            {player.type==="hitter"
+              ? `${Math.round(player.consensus?.PA||0)} PA`
+              : `${Math.round(player.consensus?.IP||0)} IP`
+            } · {Object.keys(player.systems||{}).length} sys
           </div>
         </div>
         <div style={{display:"flex",gap:4,flexShrink:0,marginLeft:8}}>
@@ -386,9 +397,9 @@ function PlayerPanel({player,allPlayers,per600,showPct,onClose,onNavigate}) {
         </div>
       </div>
 
-      {/* VAR + Z */}
+      {/* VAR + Z-Score */}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}}>
-        {[["VAR",player.VAR,tc],["Z-Score",player.zScore,"#A78BFA"]].map(([lbl,val,c])=>(
+        {[["VAR",player.VAR,"#4A9EFF"],["Z-Score",player.zScore,"#A78BFA"]].map(([lbl,val,c])=>(
           <div key={lbl} style={{background:c+"10",border:`1px solid ${c}25`,borderRadius:8,
             padding:"9px 12px",textAlign:"center"}}>
             <div style={{fontSize:9,color:"#444",marginBottom:2,letterSpacing:"0.5px"}}>{lbl}</div>
@@ -399,44 +410,30 @@ function PlayerPanel({player,allPlayers,per600,showPct,onClose,onNavigate}) {
         ))}
       </div>
 
-      {/* Panel tabs */}
+      {/* Tabs */}
       <div style={{display:"flex",gap:1,marginBottom:14,background:"#0f0f18",borderRadius:7,padding:3,flexWrap:"wrap"}}>
         {PT("overview","Overview")}
         {PT("systems","Systems")}
-        {PT("disagree","Disagreement")}
+        {PT("disagree","Disagree")}
         {PT("skills","Skills")}
         {PT("history","Historical")}
       </div>
 
-      {/* Overview — percentile bars */}
+      {/* Overview — stat cards grid */}
       {panelTab==="overview"&&(
-        <div style={{background:"#0f0f18",border:"1px solid #1a1a2e",borderRadius:8,padding:14}}>
+        <div>
           <div style={{fontSize:9,color:"#444",fontWeight:700,marginBottom:10,
             textTransform:"uppercase",letterSpacing:"0.8px"}}>
-            Percentile Ranks {per600?"(per 600 PA)":""} — vs top 300
+            Key Stats — vs top 300 {per600?"(per 600 PA)":""}
           </div>
-          {cats.map(cat=>{
-            const raw=player.consensus?.[cat], pa=player.consensus?.PA||1;
-            const val=per600?scaleTo600(raw,cat,pa):raw;
-            const pct=player.percentiles?.[cat];
-            const lb=LOWER_BETTER.has(cat);
-            const ep=lb&&pct!=null?1-pct:pct;
-            const color=pctColor(ep);
-            return (
-              <div key={cat} style={{marginBottom:9}}>
-                <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
-                  <span style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:"0.5px"}}>{cat}</span>
-                  <div style={{display:"flex",gap:10,alignItems:"center"}}>
-                    <span style={{fontSize:10,color,fontFamily:"'DM Mono',monospace"}}>{ordinal(ep)}</span>
-                    <span style={{fontSize:12,fontWeight:700,color,fontFamily:"'DM Mono',monospace"}}>{fmtStat(val,cat)}</span>
-                  </div>
-                </div>
-                <div style={{height:3,background:"#1a1a2e",borderRadius:2,overflow:"hidden"}}>
-                  <div style={{height:"100%",width:`${(ep??0)*100}%`,background:color,borderRadius:2,transition:"width 0.5s"}}/>
-                </div>
-              </div>
-            );
-          })}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+            {overviewCats.map(cat=>{
+              const raw=player.consensus?.[cat], pa=player.consensus?.PA||1;
+              const val=per600?scaleTo600(raw,cat,pa):raw;
+              const pct=player.percentiles?.[cat];
+              return <StatCard key={cat} cat={cat} val={val} pct={pct}/>;
+            })}
+          </div>
         </div>
       )}
 
@@ -487,7 +484,6 @@ function ColumnHeaders({isHitter, showPct}) {
 
 // ── Player row ────────────────────────────────────────────────────────────────
 function PlayerRow({player,rank,isSelected,onSelect,showPct,per600}) {
-  const tc    = TIER_COLORS[player.tier]??"#6B7280";
   const flags = player.flags??[];
   const c     = player.consensus??{};
   const pa    = c.PA||1;
@@ -495,20 +491,21 @@ function PlayerRow({player,rank,isSelected,onSelect,showPct,per600}) {
   const cols  = isHitter ? HIT_DISPLAY : PIT_DISPLAY;
   const dis   = player.disagreement_score??0;
   const disColor = dis>0.2?"#F87171":dis>0.1?"#FB923C":"#9CA3AF";
+  const varColor = player.VAR>=8?"#00C896":player.VAR>=2?"#4A9EFF":player.VAR>=-2?"#9CA3AF":"#F87171";
 
   return (
     <div onClick={()=>onSelect(player)}
       style={{display:"flex",alignItems:"center",gap:6,padding:"6px 12px",
         borderRadius:7,cursor:"pointer",marginBottom:2,
         background:isSelected?"#131320":"#0d0d15",
-        border:isSelected?`1px solid ${tc}45`:"1px solid #131320",
+        border:isSelected?"1px solid #4A9EFF45":"1px solid #131320",
         transition:"all 0.1s"}}>
 
       <span style={{width:22,fontSize:10,color:"#2a2a3e",fontFamily:"'DM Mono',monospace",flexShrink:0}}>{rank}</span>
 
-      <div style={{width:26,height:26,borderRadius:4,background:tc+"15",border:`1px solid ${tc}35`,
+      <div style={{width:26,height:26,borderRadius:4,background:"#1a1a2e",border:"1px solid #2a2a3e",
         display:"flex",alignItems:"center",justifyContent:"center",
-        fontSize:8,fontWeight:700,color:tc,flexShrink:0}}>
+        fontSize:8,fontWeight:700,color:"#888",flexShrink:0}}>
         {(player.pos||"?").slice(0,3)}
       </div>
 
@@ -552,7 +549,7 @@ function PlayerRow({player,rank,isSelected,onSelect,showPct,per600}) {
       </div>
 
       <div style={{minWidth:36,textAlign:"right",flexShrink:0}}>
-        <div style={{color:tc,fontWeight:700,fontFamily:"'DM Mono',monospace",fontSize:11}}>
+        <div style={{color:varColor,fontWeight:700,fontFamily:"'DM Mono',monospace",fontSize:11}}>
           {player.VAR>0?"+":""}{player.VAR}
         </div>
         {showPct&&<div style={{fontSize:9,color:"#333",fontFamily:"'DM Mono',monospace"}}>var</div>}
@@ -584,10 +581,6 @@ function ErrorScreen({msg}) {
       <div style={{fontSize:28}}>⚠️</div>
       <div style={{fontSize:16,fontWeight:700,color:"#F87171"}}>Could not load player data</div>
       <div style={{fontSize:13,color:"#555",maxWidth:440,textAlign:"center"}}>{msg}</div>
-      <div style={{fontSize:12,color:"#333",marginTop:8}}>
-        Run <code style={{color:"#00C896",background:"#00C89610",padding:"2px 6px",borderRadius:4}}>
-          python scripts/process.py</code> to generate players.json first.
-      </div>
     </div>
   );
 }
@@ -673,23 +666,20 @@ export default function App() {
   const TAB=(t,label)=>(
     <button key={t} onClick={()=>setTab(t)}
       style={{padding:"7px 18px",borderRadius:"5px 5px 0 0",border:"none",cursor:"pointer",
-        fontSize:11,fontWeight:700,letterSpacing:"0.3px",
-        background:tab===t?"#0d0d15":"transparent",
+        fontSize:11,fontWeight:700,background:tab===t?"#0d0d15":"transparent",
         color:tab===t?"#ddd":"#444",
-        borderBottom:tab===t?"2px solid #4A9EFF":"2px solid transparent",
-        transition:"all 0.12s"}}>
+        borderBottom:tab===t?"2px solid #4A9EFF":"2px solid transparent",transition:"all 0.12s"}}>
       {label}
     </button>
   );
 
-  const selectStyle={padding:"6px 10px",background:"#0d0d15",border:"1px solid #1e1e2e",
+  const sel={padding:"6px 10px",background:"#0d0d15",border:"1px solid #1e1e2e",
     borderRadius:7,color:"#ccc",fontSize:11,cursor:"pointer",outline:"none"};
 
   const Pill=(val,cur,setter,label,activeColor="#4A9EFF")=>(
     <button key={val} onClick={()=>setter(val)}
       style={{padding:"5px 11px",borderRadius:6,border:"1px solid",fontSize:11,fontWeight:600,cursor:"pointer",
-        borderColor:cur===val?activeColor:"#1e1e2e",
-        background:cur===val?activeColor+"18":"transparent",
+        borderColor:cur===val?activeColor:"#1e1e2e",background:cur===val?activeColor+"18":"transparent",
         color:cur===val?activeColor:"#555",whiteSpace:"nowrap"}}>
       {label||val}
     </button>
@@ -707,14 +697,14 @@ export default function App() {
   const Controls=()=>(
     <div style={{display:"flex",gap:8,marginBottom:10,flexWrap:"wrap",alignItems:"center"}}>
       <input placeholder="Search player or team…" value={search} onChange={e=>setSearch(e.target.value)}
-        style={{...selectStyle,minWidth:160,fontFamily:"inherit",padding:"6px 12px"}}/>
-      <select value={teamFilter} onChange={e=>setTeamFilter(e.target.value)} style={selectStyle}>
+        style={{...sel,minWidth:160,fontFamily:"inherit",padding:"6px 12px"}}/>
+      <select value={teamFilter} onChange={e=>setTeamFilter(e.target.value)} style={sel}>
         {teams.map(t=><option key={t} value={t}>{t==="All"?"All Teams":t}</option>)}
       </select>
       <div style={{display:"flex",gap:4}}>
         {["All","Hitters","Pitchers"].map(t=>Pill(t,typeFilter,handleTypeChange,null,"#A78BFA"))}
       </div>
-      <select value={posFilter} onChange={e=>setPosFilter(e.target.value)} style={selectStyle}>
+      <select value={posFilter} onChange={e=>setPosFilter(e.target.value)} style={sel}>
         {posOptions.map(p=><option key={p} value={p}>{p==="All"?"All Positions":p}</option>)}
       </select>
       <div style={{width:1,height:18,background:"#2a2a3e",flexShrink:0}}/>
@@ -732,10 +722,8 @@ export default function App() {
   );
 
   const PlayerList=({list})=>{
-    if (list.length===0) return <div style={{color:"#2a2a3e",fontSize:13,textAlign:"center",padding:40}}>No players found.</div>;
-    const lh=list.filter(p=>p.type==="hitter").length;
-    const lp=list.filter(p=>p.type==="pitcher").length;
-    const isHitter=lh>=lp;
+    if(list.length===0) return <div style={{color:"#2a2a3e",fontSize:13,textAlign:"center",padding:40}}>No players found.</div>;
+    const isHitter=list.filter(p=>p.type==="hitter").length >= list.filter(p=>p.type==="pitcher").length;
     return (
       <>
         <ColumnHeaders isHitter={isHitter} showPct={showPct}/>
