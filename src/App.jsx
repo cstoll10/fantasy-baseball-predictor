@@ -448,11 +448,11 @@ function PlayerPanel({player,allPlayers,per600,showPct,onClose,onNavigate,skillP
             {(()=>{
               const s = scarcity?.[player.pos];
               if (!s) return null;
-              const si = s.scarcity_index;
+              const si = s?.scarcity_index;
               const label = si < 0.8 ? "🔴 Scarce" : si < 1.2 ? "🟡 Moderate" : "🟢 Deep";
               const color = si < 0.8 ? "#F87171" : si < 1.2 ? "#FBBF24" : "#00C896";
               return <span style={{color,marginLeft:6,fontWeight:700}}>
-                {label} ({s.elite_count} elite / {s.starter_slots} slots)
+                {label} ({s?.elite_count} elite / {s?.starter_slots} slots)
               </span>;
             })()}
           </div>

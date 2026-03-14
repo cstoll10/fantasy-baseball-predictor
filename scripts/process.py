@@ -436,10 +436,12 @@ def add_scarcity(players):
 
         vars_all = [p["VAR"] for p in pool if "VAR" in p]
         if vars_all:
-            p66 = float(np.percentile(vars_all, 66))
-            elite_count = sum(1 for v in vars_all if v >= p66)
+            # Elite = top 20% of VAR within this position group, min VAR > 0
+            p80 = float(np.percentile(vars_all, 80))
+            elite_threshold = max(p80, 0.0)
+            elite_count = sum(1 for v in vars_all if v >= elite_threshold)
         else:
-            p66 = 0
+            elite_threshold = 0
             elite_count = 0
 
         s_vars = [p["VAR"] for p in sorted_pool[:slots]                  if "VAR" in p]
@@ -454,7 +456,7 @@ def add_scarcity(players):
             "total":            len(pool),
             "starter_slots":    slots,
             "elite_count":      elite_count,       # players above 66th pct VAR
-            "p66_var":          round(p66, 2),      # VAR threshold for elite
+            "elite_var_threshold": round(elite_threshold, 2),  # VAR threshold for elite (80th pct)
             "scarcity_index":   scarcity_index,     # < 1.0 = scarce
             "starter_avg_var":  round(s_avg, 2),
             "bench_avg_var":    round(b_avg, 2),
