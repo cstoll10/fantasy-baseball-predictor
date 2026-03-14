@@ -35,7 +35,6 @@ SYSTEM_FILES = {
     "Depth Charts": ("depthcharts_hitters.csv",   "depthcharts_pitchers.csv"),
 }
 
-# Position priority — prefer scarcer positions
 POS_PRIORITY = ["C","SS","2B","3B","CF","OF","LF","RF","1B","DH"]
 
 def normalize_pos(p):
@@ -46,26 +45,53 @@ def normalize_pos(p):
     return None
 
 def fetch_positions():
-    """Fetch real positions from pybaseball fielding stats."""
+    """Fetch positions from 2022-2025 fielding stats to maximize coverage."""
     try:
         from pybaseball import fielding_stats
-        print("  Fetching position data from fielding stats...")
-        fielding = fielding_stats(2024, 2024, qual=1)
         pos_map = {}
-        for _, row in fielding.iterrows():
-            name = str(row.get("Name","")).strip()
-            pos  = normalize_pos(str(row.get("Pos","")))
-            if not pos or not name: continue
-            if name not in pos_map:
-                pos_map[name] = pos
-            else:
-                cur = POS_PRIORITY.index(pos_map[name]) if pos_map[name] in POS_PRIORITY else 99
-                new = POS_PRIORITY.index(pos)           if pos           in POS_PRIORITY else 99
-                if new < cur: pos_map[name] = pos
+        for year in [2022, 2023, 2024, 2025]:
+            try:
+                print(f"  Fetching fielding positions {year}...")
+                fielding = fielding_stats(year, year, qual=1)
+                for _, row in fielding.iterrows():
+                    name = str(row.get("Name","")).strip()
+                    pos  = normalize_pos(str(row.get("Pos","")))
+                    if not pos or not name: continue
+                    if name not in pos_map:
+                        pos_map[name] = pos
+                    else:
+                        cur = POS_PRIORITY.index(pos_map[name]) if pos_map[name] in POS_PRIORITY else 99
+                        new = POS_PRIORITY.index(pos)           if pos           in POS_PRIORITY else 99
+                        if new < cur: pos_map[name] = pos
+            except Exception as e:
+                print(f"  Could not fetch {year}: {e}")
         print(f"  Got positions for {len(pos_map)} players")
         return pos_map
     except Exception as e:
         print(f"  Could not fetch fielding positions: {e}")
+        return {}
+
+def fetch_pitcher_roles():
+    """Fetch SP/RP roles from pitching stats 2022-2025."""
+    try:
+        from pybaseball import pitching_stats
+        role_map = {}
+        for year in [2022, 2023, 2024, 2025]:
+            try:
+                df = pitching_stats(year, year, qual=1)
+                for _, row in df.iterrows():
+                    name = str(row.get("Name","")).strip()
+                    gs   = float(row.get("GS", 0) or 0)
+                    g    = float(row.get("G",  1) or 1)
+                    role = "SP" if gs/g >= 0.5 else "RP"
+                    if name not in role_map:
+                        role_map[name] = role
+            except Exception as e:
+                print(f"  Could not fetch pitcher roles {year}: {e}")
+        print(f"  Got pitcher roles for {len(role_map)} pitchers")
+        return role_map
+    except Exception as e:
+        print(f"  Could not fetch pitcher roles: {e}")
         return {}
 
 def normalize_name(name):
@@ -115,7 +141,7 @@ def load_projections():
     pitchers = pd.concat(pitcher_frames, ignore_index=True) if pitcher_frames else pd.DataFrame()
     return hitters, pitchers
 
-def merge_players(hitters, pitchers, pos_map):
+def merge_players(hitters, pitchers, pos_map, role_map):
     players = {}
 
     def process(df, ptype):
@@ -123,11 +149,16 @@ def merge_players(hitters, pitchers, pos_map):
             name = normalize_name(str(row.get("Name", "")))
             if not name: continue
             key = f"{name}_{ptype}"
+            raw_name = str(row.get("Name","")).strip()
+
             if key not in players:
-                raw_name = str(row.get("Name","")).strip()
-                # Use fielding position if available, fall back to CSV Pos column
-                csv_pos = normalize_pos(str(row.get("Pos",""))) or ""
-                real_pos = pos_map.get(raw_name, csv_pos)
+                if ptype == "hitter":
+                    csv_pos  = normalize_pos(str(row.get("Pos",""))) or "OF"
+                    real_pos = pos_map.get(raw_name, csv_pos)
+                else:
+                    csv_pos  = normalize_pos(str(row.get("Pos",""))) or "SP"
+                    real_pos = role_map.get(raw_name, csv_pos)
+
                 players[key] = {
                     "id":      key,
                     "name":    raw_name,
@@ -136,6 +167,7 @@ def merge_players(hitters, pitchers, pos_map):
                     "type":    ptype,
                     "systems": {},
                 }
+
             p = players[key]
             if row.get("Team"): p["team"] = str(row["Team"]).strip()
 
@@ -369,11 +401,12 @@ def main():
         print("No CSV files found.")
         sys.exit(1)
 
-    print("\nStep 2: Fetching real positions...")
-    pos_map = fetch_positions()
+    print("\nStep 2: Fetching real positions (2022-2025)...")
+    pos_map  = fetch_positions()
+    role_map = fetch_pitcher_roles()
 
     print("\nStep 3: Merging players...")
-    players = merge_players(hitters, pitchers, pos_map)
+    players = merge_players(hitters, pitchers, pos_map, role_map)
     print(f"  Total: {len(players)} unique players")
 
     print("\nStep 4: Filtering qualified players...")
