@@ -281,32 +281,49 @@ def add_tiers(players):
 def add_percentiles(players):
     hitters  = [p for p in players if p["type"] == "hitter"]
     pitchers = [p for p in players if p["type"] == "pitcher"]
+
+    # Use top POOL_SIZE by PA/IP — percentiles only assigned within this pool
     h_pool = sorted(hitters,  key=lambda x: x["consensus"].get("PA") or 0, reverse=True)[:POOL_SIZE]
     p_pool = sorted(pitchers, key=lambda x: x["consensus"].get("IP") or 0, reverse=True)[:POOL_SIZE]
 
-    def compute(pool, all_type, cats):
+    def compute_within_pool(pool, cats):
+        """Rank each player purely within the pool. Pool rank 1/300 = 0.33%, 300/300 = 100%."""
         for cat in cats:
-            vals = sorted([p["consensus"].get(cat) for p in pool if p["consensus"].get(cat) is not None])
-            n = len(vals)
-            if not n: continue
-            for p in all_type:
-                v = p["consensus"].get(cat)
-                pct = len([x for x in vals if x <= v]) / n if v is not None else None
-                p.setdefault("percentiles", {})[cat] = round(min(pct, 1.0), 4) if pct is not None else None
+            # Sort pool by this stat
+            lb = cat in LOWER_BETTER
+            pool_with_val = [(p, p["consensus"].get(cat)) for p in pool if p["consensus"].get(cat) is not None]
+            # Sort ascending; lower-better stats get flipped so low value = low percentile
+            pool_with_val.sort(key=lambda x: x[1] if not lb else -x[1])
+            n = len(pool_with_val)
+            # Clear any previous percentile for this cat on ALL players
+            for p in pool:
+                p.setdefault("percentiles", {})[cat] = None
+            # Assign rank-based percentile only to pool members
+            for rank, (p, v) in enumerate(pool_with_val):
+                p["percentiles"][cat] = round((rank + 1) / n, 4)
 
-    compute(h_pool, hitters,  HIT_CATS + ["wOBA","wRC+","AVG","SLG","ISO"])
-    compute(p_pool, pitchers, PIT_CATS + ["FIP"])
+    compute_within_pool(h_pool, HIT_CATS + ["wOBA","wRC+","AVG","SLG","ISO"])
+    compute_within_pool(p_pool, PIT_CATS + ["FIP"])
 
-    # VAR, zScore, CWS, WFPTS percentiles — use top-300 pool per type as reference
-    for ptype, pool, all_type in [("hitter", h_pool, hitters), ("pitcher", p_pool, pitchers)]:
+    # VAR, zScore, CWS, WFPTS — rank within pool only
+    for pool in [h_pool, p_pool]:
         for key in ["VAR","zScore","CWS","WFPTS"]:
-            pool_vals = sorted([p.get(key,0) for p in pool if p.get(key) is not None])
-            n = len(pool_vals)
-            if not n: continue
-            for p in all_type:
-                v = p.get(key, 0)
-                pct = len([x for x in pool_vals if x <= v]) / n
-                p.setdefault("percentiles",{})[key] = round(min(float(pct), 1.0), 4)
+            pool_with_val = [(p, p.get(key)) for p in pool if p.get(key) is not None]
+            pool_with_val.sort(key=lambda x: x[1])
+            n = len(pool_with_val)
+            for p in pool:
+                p.setdefault("percentiles",{})[key] = None
+            for rank, (p, v) in enumerate(pool_with_val):
+                p["percentiles"][key] = round((rank + 1) / n, 4)
+
+    # Players outside pool get None for all percentiles
+    pool_ids = {p["id"] for p in h_pool} | {p["id"] for p in p_pool}
+    for p in players:
+        if p["id"] not in pool_ids:
+            for key in HIT_CATS + PIT_CATS + ["wOBA","wRC+","AVG","SLG","ISO","FIP",
+                                               "VAR","zScore","CWS","WFPTS"]:
+                p.setdefault("percentiles",{})[key] = None
+
     return players
 
 def add_fantasy_value(players):
