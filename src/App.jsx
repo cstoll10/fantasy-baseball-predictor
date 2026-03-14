@@ -573,7 +573,7 @@ function PlayerRow({player,rank,isSelected,isDrafted,isKeeper,isMyKeeper,onSelec
             letterSpacing:"-0.2px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
             {player.name}
           </span>
-          {isMyKeeper&&<span style={{fontSize:9,color:"#00C896",flexShrink:0,fontWeight:700}>K</span>}
+          {isMyKeeper&&<span style={{fontSize:9,color:"#00C896",flexShrink:0,fontWeight:700}}>K</span>}
           {isDrafted&&!isMyKeeper&&<span style={{fontSize:9,color:"#555",flexShrink:0}}>drafted</span>}
           {flags.length>0&&<span style={{fontSize:9,color:"#F87171",flexShrink:0}}>⚠</span>}
         </div>
