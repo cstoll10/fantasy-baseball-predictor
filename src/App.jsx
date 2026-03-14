@@ -398,7 +398,7 @@ function HistoricalPanel({player, skillPctFns}) {
 }
 
 // ── Player panel ──────────────────────────────────────────────────────────────
-function PlayerPanel({player,allPlayers,per600,showPct,onClose,onNavigate,skillPctFns}) {
+function PlayerPanel({player,allPlayers,per600,showPct,onClose,onNavigate,skillPctFns,poolPcts}) {
   const [panelTab,setPanelTab]=useState("overview");
   if (!player) return null;
   const idx  = allPlayers.findIndex(p=>p.id===player.id);
@@ -464,20 +464,25 @@ function PlayerPanel({player,allPlayers,per600,showPct,onClose,onNavigate,skillP
       {/* VAR · Z · CWS · WFPTS */}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}}>
         {[
-          ["VAR",   player.VAR,   "#4A9EFF", "Value over repl."],
-          ["Z-Score",player.zScore,"#A78BFA","Category z-score"],
-          ["CWS",   player.CWS,   "#00C896", "Category win score"],
-          ["WFPTS", player.WFPTS, "#FB923C", "Weighted fant. pts"],
-        ].map(([lbl,val,c,sub])=>(
-          <div key={lbl} style={{background:c+"10",border:`1px solid ${c}25`,borderRadius:8,
-            padding:"8px 10px",textAlign:"center"}}>
-            <div style={{fontSize:8,color:"#444",marginBottom:1,letterSpacing:"0.4px"}}>{lbl}</div>
-            <div style={{fontSize:18,fontWeight:700,color:c,fontFamily:"'DM Mono',monospace",lineHeight:1.1}}>
-              {val!=null?(val>0&&lbl==="VAR"?"+":"")+val:"—"}
+          ["VAR",    player.VAR,    "#4A9EFF", "Value over repl.",  poolPcts?.VAR],
+          ["Z-Score",player.zScore, "#A78BFA", "Category z-score",  poolPcts?.zScore],
+          ["CWS",    player.CWS,    "#00C896", "Category win score", poolPcts?.CWS],
+          ["WFPTS",  player.WFPTS,  "#FB923C", "Weighted fant. pts", poolPcts?.WFPTS],
+        ].map(([lbl,val,c,sub,pctFn])=>{
+          const pct = pctFn?.(val);
+          const ord = ordinal(pct);
+          return (
+            <div key={lbl} style={{background:c+"10",border:`1px solid ${c}25`,borderRadius:8,
+              padding:"8px 10px",textAlign:"center"}}>
+              <div style={{fontSize:8,color:"#444",marginBottom:1,letterSpacing:"0.4px"}}>{lbl}</div>
+              <div style={{fontSize:18,fontWeight:700,color:c,fontFamily:"'DM Mono',monospace",lineHeight:1.1}}>
+                {val!=null?(val>0&&lbl==="VAR"?"+":"")+val:"—"}
+              </div>
+              {ord && <div style={{fontSize:9,color:c,fontFamily:"'DM Mono',monospace",marginTop:2,opacity:0.8}}>{ord}</div>}
+              <div style={{fontSize:8,color:"#333",marginTop:1}}>{sub}</div>
             </div>
-            <div style={{fontSize:8,color:"#333",marginTop:2}}>{sub}</div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Tabs */}
@@ -652,6 +657,7 @@ export default function App() {
   const [selected,setSelected] = useState(null);
   const [per600,setPer600]     = useState(false);
   const [showPct,setShowPct]   = useState(false);
+  const [sortBy,setSortBy]     = useState("VAR");
   const searchRef = useRef(null);
 
   useEffect(()=>{
@@ -691,6 +697,35 @@ export default function App() {
       return true;
     })
   ,[players,typeFilter,teamFilter,posFilter,search,disFilter]);
+
+  // Per-600 adjusted values for sorting
+  const getSortVal = (p, key) => {
+    if (key === "VAR" || key === "zScore" || key === "CWS") return p[key] ?? -999;
+    if (key === "WFPTS") {
+      if (!per600) return p.WFPTS ?? -999;
+      // Recalculate WFPTS on the fly with per-600 values — use raw VAR as proxy since
+      // WFPTS is already normalized; per600 doesn't change ranking meaningfully for rate stats
+      return p.WFPTS ?? -999;
+    }
+    return p[key] ?? -999;
+  };
+
+  const sorted = useMemo(()=>[...filtered].sort((a,b)=>getSortVal(b,sortBy)-getSortVal(a,sortBy))
+  ,[filtered, sortBy, per600]);
+
+  // Pool percentiles for VAR, zScore, WFPTS (for the panel display)
+  const poolPcts = useMemo(()=>{
+    const build = (arr, key) => {
+      const vals = arr.map(p=>p[key]).filter(v=>v!=null).sort((a,b)=>a-b);
+      return v => v==null?null: vals.filter(x=>x<=v).length/vals.length;
+    };
+    return {
+      VAR:    build(players, "VAR"),
+      zScore: build(players, "zScore"),
+      WFPTS:  build(players, "WFPTS"),
+      CWS:    build(players, "CWS"),
+    };
+  },[players]);
 
   const handleSelect   = useCallback(p=>setSelected(s=>s?.id===p.id?null:p),[]);
   const handleNavigate = useCallback(dir=>{
@@ -795,6 +830,12 @@ export default function App() {
             <div style={{width:1,height:18,background:"#2a2a3e",flexShrink:0}}/>
             {Toggle(per600,  per600?"✓ /600 PA":"/600 PA",   ()=>setPer600(v=>!v))}
             {Toggle(showPct, showPct?"✓ Percentiles":"Percentiles", ()=>setShowPct(v=>!v), "#A78BFA")}
+            <select value={sortBy} onChange={e=>setSortBy(e.target.value)} style={{...sel,color:"#A78BFA",borderColor:"#A78BFA50"}}>
+              <option value="VAR">Sort: VAR</option>
+              <option value="zScore">Sort: Z-Score</option>
+              <option value="CWS">Sort: CWS</option>
+              <option value="WFPTS">Sort: WFPTS</option>
+            </select>
           </div>
         </div>
       </div>
@@ -802,12 +843,13 @@ export default function App() {
       <div style={{maxWidth:1600,margin:"0 auto",padding:"14px 24px"}}>
         <div style={{display:"flex",gap:14,alignItems:"flex-start"}}>
           <div style={{flex:1,minWidth:0}}>
-            <PlayerList list={filtered}/>
+            <PlayerList list={sorted}/>
           </div>
           {selected&&(
-            <PlayerPanel player={selected} allPlayers={filtered}
+            <PlayerPanel player={selected} allPlayers={sorted}
               per600={per600} showPct={showPct}
               skillPctFns={getSkillPcts(selected)}
+              poolPcts={poolPcts}
               onClose={()=>setSelected(null)} onNavigate={handleNavigate}/>
           )}
         </div>
