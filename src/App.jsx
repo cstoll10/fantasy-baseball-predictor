@@ -727,7 +727,7 @@ export default function App() {
     </button>
   );
 
-  const PlayerList = useCallback(({list})=>{
+  const PlayerList = ({list})=>{
     if(list.length===0) return <div style={{color:"#2a2a3e",fontSize:13,textAlign:"center",padding:40}}>No players found.</div>;
     const isHitter=list.filter(p=>p.type==="hitter").length >= list.filter(p=>p.type==="pitcher").length;
     return (
@@ -740,7 +740,7 @@ export default function App() {
         ))}
       </>
     );
-  },[selected,showPct,per600,handleSelect]);
+  };
 
   return (
     <div style={{minHeight:"100vh",background:"#080810",fontFamily:"system-ui",color:"#e0e0e0"}}>
