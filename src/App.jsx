@@ -1286,6 +1286,7 @@ export default function App() {
   const [draftPosFilter,setDraftPosFilter] = useState("All");
   const [analysisTab,setAnalysisTab]       = useState("targets");
   const searchRef = useRef(null);
+  const draftListRef = useRef(null);
 
   useEffect(()=>{
     fetch("/fantasy-baseball-predictor/players.json")
@@ -1374,6 +1375,15 @@ export default function App() {
   },[sorted,draftFiltered,tab]);
   const handleTypeChange = useCallback(v=>{setTypeFilter(v);setPosFilter("All");},[]);
 
+  const preserveScroll = useCallback((fn) => {
+    const el = draftListRef.current;
+    const scrollTop = el ? el.scrollTop : 0;
+    fn();
+    requestAnimationFrame(() => {
+      if (el) el.scrollTop = scrollTop;
+    });
+  }, []);
+
   const toggleDraft = useCallback(player=>{
     const isKeeper=myKeepers.some(k=>k.id===player.id);
     if (isKeeper) return; // Can't un-draft keepers
@@ -1455,7 +1465,9 @@ export default function App() {
             isOtherDraft={isOtherPick(p.id)}
             isKeeper={myKeepers.some(k=>k.id===p.id)||drafted.has(p.id)&&!myPickSet.has(currentPick)}
             isMyKeeper={isMyKeeper(p.id)}
-            onSelect={handleSelect} onDraft={toggleDraft} onOtherDraft={toggleOtherDraft}
+            onSelect={handleSelect}
+            onDraft={p=>preserveScroll(()=>toggleDraft(p))}
+            onOtherDraft={p=>preserveScroll(()=>toggleOtherDraft(p))}
             showPct={showPct} per600={per600} isDraftBoard={isDraftBoard}/>
         ))}
       </>
@@ -1660,7 +1672,7 @@ export default function App() {
 
             {/* Draft list + my roster */}
             <div style={{display:"flex",gap:14,alignItems:"flex-start"}}>
-              <div style={{flex:1,minWidth:0}}>
+              <div ref={draftListRef} style={{flex:1,minWidth:0,overflowY:"auto",maxHeight:"calc(100vh - 280px)"}}>
                 <PlayerList list={draftFiltered} isDraftBoard={true}/>
               </div>
               <MyRoster myPicks={myPicks} draftLog={draftLog} myKeepers={myKeepers} currentPick={currentPick}/>
