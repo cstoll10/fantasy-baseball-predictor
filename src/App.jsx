@@ -107,6 +107,14 @@ function disLabel(dis) {
 function varColor(v) {
   return v>=8?"#057A55":v>=2?"#1B3FA0":v>=-2?"#9CA3AF":"#C41E3A";
 }
+function posColor(pos) {
+  const map = {
+    "C":"#DC2626","1B":"#D97706","2B":"#059669","SS":"#1B3FA0",
+    "3B":"#7C3AED","OF":"#0891B2","DH":"#6B7280","SP":"#B45309",
+    "RP":"#BE185D","P":"#6B7280","UTIL":"#6B7280",
+  };
+  return map[pos] || "#6B7280";
+}
 
 // ── Formatters ────────────────────────────────────────────────────────────────
 function fmtStat(val, cat) {
