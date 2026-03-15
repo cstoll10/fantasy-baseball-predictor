@@ -1370,7 +1370,6 @@ export default function App() {
   ,[players]);
 
   // Resolve other teams' keepers — normalize accents for matching
-  const normalizeAccents = (s) => s.normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase();
   const otherKeepers = useMemo(()=>
     OTHER_KEEPERS.map(name=>players.find(p=>normalizeAccents(p.name)===normalizeAccents(name))).filter(Boolean)
   ,[players]);
