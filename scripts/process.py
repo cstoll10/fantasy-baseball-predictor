@@ -736,7 +736,10 @@ def main():
     print("\nStep 8: Flags...")
     players = flag_players(players)
 
-    print("\nStep 9: Historical data...")
+    print("\nStep 9: ADP rankings...")
+    players = load_adp(players)
+
+    print("\nStep 10: Historical data...")
     history = load_historical()
     for p in players:
         p["history"] = history.get(normalize_name(p["name"]), [])
