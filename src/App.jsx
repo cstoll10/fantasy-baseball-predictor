@@ -984,11 +984,11 @@ function CategoryGapAnalysis({players, drafted, myDrafted, myKeepers}) {
 
 // ── Breakout/Bust Board ───────────────────────────────────────────────────────
 function BreakoutBustBoard({players, drafted}) {
-  const available=players.filter(p=>!drafted.has(p.id)&&(p.adp!=null||p.VAR>-2));
+  const available=players.filter(p=>!drafted.has(p.id)&&p.VAR>-2&&p.adp!=null);
   const flagged=available.map(p=>({...p,_bb:getBreakoutBust(p)})).filter(p=>p._bb!=null)
     .sort((a,b)=>(b.disagreement_score||0)-(a.disagreement_score||0));
   // Filter: must have ADP or VAR > -2
-  const qualified_flagged = flagged.filter(p=>p.adp!=null||p.VAR>-2);
+  const qualified_flagged = flagged.filter(p=>p.VAR>-2);
   const breakouts=qualified_flagged.filter(p=>!p._bb.flag.includes("Bust"));
   const busts=qualified_flagged.filter(p=>p._bb.flag.includes("Bust"));
   const Card=({p})=>{
