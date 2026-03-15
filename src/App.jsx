@@ -17,6 +17,65 @@ const MY_KEEPERS = [
   "eury perez",
 ];
 
+// Other teams' 55 keepers — pre-marked as other-drafted
+const OTHER_KEEPERS = [
+  "roki sasaki",
+  "roman anthony",
+  "george kirby",
+  "james wood",
+  "cal raleigh",
+  "alejandro kirk",
+  "chris sale",
+  "willi castro",
+  "dennis santana",
+  "mason miller",
+  "jackson chourio",
+  "nick kurtz",
+  "josh naylor",
+  "gunnar henderson",
+  "brice turang",
+  "ketel marte",
+  "riley greene",
+  "jacob wilson",
+  "pete crow-armstrong",
+  "brent rooker",
+  "bryan woo",
+  "bryce harper",
+  "kyle bradish",
+  "tarik skubal",
+  "geraldo perdomo",
+  "agustin ramirez",
+  "cristopher sanchez",
+  "cody bellinger",
+  "garrett crochet",
+  "byron buxton",
+  "jacob misiorowski",
+  "elly de la cruz",
+  "jazz chisholm jr.",
+  "aroldis chapman",
+  "dylan cease",
+  "nolan mclean",
+  "jac caglianone",
+  "seiya suzuki",
+  "bubba chandler",
+  "vinnie pasquantino",
+  "ryan helsley",
+  "maikel garcia",
+  "ranger suarez",
+  "yainer diaz",
+  "steven kwan",
+  "wyatt langford",
+  "tyler soderstrom",
+  "shea langeliers",
+  "andres munoz",
+  "paul skenes",
+  "cj abrams",
+  "joe ryan",
+  "drake baldwin",
+  "shota imanaga",
+  "jackson merrill",
+];
+
 // ── Stat constants ────────────────────────────────────────────────────────────
 const HIT_CATS     = ["R","HR","RBI","SB","OBP","H","TB"];
 const PIT_CATS     = ["W","K","ERA","WHIP","SV","HLD","QS"];
@@ -1307,16 +1366,27 @@ export default function App() {
     MY_KEEPERS.map(name=>players.find(p=>p.name.toLowerCase()===name)).filter(Boolean)
   ,[players]);
 
-  // Auto-mark keepers as drafted on load
+  // Resolve other teams' keepers
+  const otherKeepers = useMemo(()=>
+    OTHER_KEEPERS.map(name=>players.find(p=>p.name.toLowerCase()===name)).filter(Boolean)
+  ,[players]);
+
+  // Auto-mark all keepers as drafted on load
   useEffect(()=>{
-    if (myKeepers.length>0) {
+    if (myKeepers.length>0||otherKeepers.length>0) {
       setDrafted(prev=>{
         const n=new Set(prev);
         myKeepers.forEach(p=>n.add(p.id));
+        otherKeepers.forEach(p=>n.add(p.id));
+        return n;
+      });
+      setOtherDrafted(prev=>{
+        const n=new Set(prev);
+        otherKeepers.forEach(p=>n.add(p.id));
         return n;
       });
     }
-  },[myKeepers]);
+  },[myKeepers,otherKeepers]);
 
   const myPicks = useMemo(()=>getMyPicks(LEAGUE_SIZE, MY_PICK, DRAFT_ROUNDS),[]);
   const myPickSet = useMemo(()=>new Set(myPicks.map(p=>p.overall)),[myPicks]);
@@ -1661,7 +1731,12 @@ export default function App() {
               </select>
               {drafted.size>myKeepers.length&&(
                 <button onClick={()=>{
-                  setDrafted(new Set(myKeepers.map(k=>k.id)));
+                  const resetSet = new Set([
+                    ...myKeepers.map(k=>k.id),
+                    ...otherKeepers.map(k=>k.id)
+                  ]);
+                  setDrafted(resetSet);
+                  setOtherDrafted(new Set(otherKeepers.map(k=>k.id)));
                   setDraftLog([]);setCurrentPick(1);
                 }} style={{padding:"5px 12px",borderRadius:6,border:"1px solid #C41E3A30",
                   color:"#C41E3A",background:"transparent",cursor:"pointer",fontSize:11,fontWeight:600}}>
