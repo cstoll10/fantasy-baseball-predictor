@@ -656,12 +656,6 @@ def load_historical():
     return history
 
 
-def load_adp(players):
-    """Load FantasyPros ADP rankings and attach to players by name match."""
-    adp_path = ROOT / "data" / "adp.csv"
-    if not adp_path.exists():
-        print("  - adp.csv not found, skipping")
-        return players
 
     try:
         df = pd.read_csv(adp_path)
@@ -736,10 +730,7 @@ def main():
     print("\nStep 8: Flags...")
     players = flag_players(players)
 
-    print("\nStep 9: ADP rankings...")
-    players = load_adp(players)
-
-    print("\nStep 10: Historical data...")
+    print("\nStep 9: Historical data...")
     history = load_historical()
     for p in players:
         p["history"] = history.get(normalize_name(p["name"]), [])
