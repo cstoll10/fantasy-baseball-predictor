@@ -57,6 +57,12 @@ def normalize_pos(p):
     if p in ("C","SS","2B","3B","1B","DH","OF","SP","RP"): return p
     return None
 
+# Known DH-primary players who show up in fielding data incorrectly
+DH_OVERRIDES = {
+    "Shohei Ohtani", "Marcell Ozuna", "Yordan Alvarez",
+    "J.D. Martinez", "Nelson Cruz", "Designated Hitter",
+}
+
 def fetch_positions():
     """
     Position assignment logic:
@@ -81,7 +87,8 @@ def fetch_positions():
                     name  = str(row.get("Name","")).strip()
                     pos   = normalize_pos(str(row.get("Pos","")))
                     if not pos or not name: continue
-                    games = float(row.get("G", 1) or 1)
+                    games = float(row.get("G", 0) or 0)
+                    if games < 10: continue  # ignore < 10 games at a position
                     if name not in yearly_field:
                         yearly_field[name] = {}
                     if year not in yearly_field[name]:
@@ -133,6 +140,8 @@ def fetch_positions():
             if assigned:
                 # Normalize OF variants
                 if assigned in ("LF","CF","RF"): assigned = "OF"
+                # Apply known DH overrides
+                if name in DH_OVERRIDES: assigned = "DH"
                 pos_map[name] = assigned
 
         print(f"  Got positions for {len(pos_map)} players")
@@ -234,6 +243,8 @@ def merge_players(hitters, pitchers, pos_map, role_map):
                     real_pos = pos_map.get(raw_name, csv_pos)
                     # Normalize any remaining OF variants
                     if real_pos in ("LF","CF","RF"): real_pos = "OF"
+                    # Apply DH overrides
+                    if raw_name in DH_OVERRIDES: real_pos = "DH"
                 else:
                     csv_pos  = normalize_pos(str(row.get("Pos",""))) or "SP"
                     real_pos = role_map.get(raw_name, csv_pos)
@@ -521,70 +532,88 @@ def add_fantasy_value(players):
 
 def add_scarcity(players):
     """
+    Cliff-based scarcity using the approach from the original model:
     For each position:
-    - total players at that position in the pool
-    - how many are above the 66th percentile of VAR (elite tier)
-    - starter slots needed across all 12 teams
-    - drop-off from starter to bench
-    - scarcity_index: ratio of elite players to starter slots needed
-      (< 1.0 = scarce, > 1.5 = deep)
+      - starter_avg = mean stat of top (slots * league_size) players
+      - replacement = stat of the last rostered player
+      - cliff = starter_avg - replacement
+    Normalize cliff to 0.95-1.20 scarcity multiplier.
+    Also track elite count (top 2x slots with positive VAR).
     """
+    # Group by position — normalize OF variants
     pos_groups = {}
     for p in players:
         raw_pos = p.get("pos","?")
-        # Normalize all OF variants to OF
         pos = "OF" if raw_pos in ("LF","CF","RF") else raw_pos
-        if pos not in pos_groups: pos_groups[pos] = []
+        # Update the player's stored pos too
+        if raw_pos in ("LF","CF","RF"):
+            p["pos"] = "OF"
+        if pos not in pos_groups:
+            pos_groups[pos] = []
         pos_groups[pos].append(p)
 
+    # Calculate VAR-based cliff per position
+    cliffs = {}
     scarcity = {}
+
     for pos, pool in pos_groups.items():
-        slots       = ROSTER_SLOTS.get(pos, 1) * LEAGUE_SIZE
-        sorted_pool = sorted(pool, key=lambda x: x.get("VAR",0), reverse=True)
+        slots = ROSTER_SLOTS.get(pos, 1) * LEAGUE_SIZE
+        sorted_pool = sorted(pool, key=lambda x: x.get("VAR", 0), reverse=True)
+        vars_sorted = [p.get("VAR", 0) for p in sorted_pool]
 
-        sorted_by_var = sorted(pool, key=lambda x: x.get("VAR", 0), reverse=True)
-        vars_sorted = [p.get("VAR", 0) for p in sorted_by_var]
-
-        # Replacement level = VAR of the last rostered starter at this position
+        # Replacement = last rostered starter
         repl_idx = min(slots - 1, len(vars_sorted) - 1)
         replacement_var = vars_sorted[repl_idx] if vars_sorted else 0.0
-
-        # Elite = players with VAR meaningfully above replacement
-        # Threshold = replacement + 25% of the gap between best and replacement
         best_var = vars_sorted[0] if vars_sorted else 0.0
-        gap = max(best_var - replacement_var, 0.001)
-        elite_threshold = replacement_var + (gap * 0.25)
-        elite_count = sum(1 for v in vars_sorted if v >= elite_threshold)
 
-        # Drop-off steepness = how fast VAR falls from #1 starter to replacement
-        # Normalize by the best player's VAR so positions are comparable
-        top_half = vars_sorted[:max(slots // 2, 1)]
-        top_avg = float(np.mean(top_half)) if top_half else 0.0
-        steepness = round((top_avg - replacement_var) / max(abs(best_var), 0.001), 4)
+        # Starter avg = top half of starters
+        top_starters = vars_sorted[:max(slots // 2, 1)]
+        starter_avg = float(np.mean(top_starters)) if top_starters else 0.0
 
-        s_vars = [p["VAR"] for p in sorted_pool[:slots]                  if "VAR" in p]
-        b_vars = [p["VAR"] for p in sorted_pool[slots:slots+LEAGUE_SIZE] if "VAR" in p]
-        s_avg  = float(np.mean(s_vars)) if s_vars else 0
-        b_avg  = float(np.mean(b_vars)) if b_vars else 0
+        # Cliff = starter avg minus replacement level
+        cliff = max(starter_avg - replacement_var, 0.0)
+        cliffs[pos] = cliff
 
-        # scarcity_index < 1.0 = scarce (not enough elite players to fill slots)
-        # scarcity_index calculated after elite_count below
+        # Bench avg
+        bench_vars = vars_sorted[slots:slots + LEAGUE_SIZE]
+        bench_avg = float(np.mean(bench_vars)) if bench_vars else 0.0
 
-        scarcity_index = round(elite_count / max(slots, 1), 2)
+        # Elite = top (2 * slots) with VAR > replacement
+        elite_target = slots * 2
+        elite_players = [p for p in sorted_pool if p.get("VAR", 0) > replacement_var][:elite_target]
+        elite_count = len(elite_players)
+        elite_threshold = round(elite_players[-1]["VAR"], 2) if elite_players else 0.0
+
+        # Steepness = cliff normalized by best player's VAR
+        steepness = round(cliff / max(abs(best_var), 0.001), 4)
+
         scarcity[pos] = {
             "total":              len(pool),
             "starter_slots":      slots,
             "elite_count":        elite_count,
-            "elite_threshold":    round(float(elite_threshold), 2),  # min VAR to be elite
-            "replacement_var":    round(float(replacement_var), 2),  # last rostered starter VAR
+            "elite_threshold":    elite_threshold,
+            "replacement_var":    round(float(replacement_var), 2),
             "best_var":           round(float(best_var), 2),
-            "steepness":          steepness,   # higher = steeper cliff = scarcer
-            "scarcity_index":     scarcity_index,
-            "starter_avg_var":    round(s_avg, 2),
-            "bench_avg_var":      round(b_avg, 2),
-            "drop_off":           round(s_avg - b_avg, 2),
+            "cliff":              round(float(cliff), 3),
+            "steepness":          steepness,
+            "starter_avg_var":    round(starter_avg, 2),
+            "bench_avg_var":      round(bench_avg, 2),
+            "drop_off":           round(starter_avg - bench_avg, 2),
+            "scarcity_index":     round(elite_count / max(slots, 1), 2),
         }
+
+    # Normalize cliffs to 0.95-1.20 scarcity multiplier
+    valid_cliffs = {pos: v for pos, v in cliffs.items() if pos in ROSTER_SLOTS}
+    if valid_cliffs:
+        min_cliff = min(valid_cliffs.values())
+        max_cliff = max(valid_cliffs.values())
+        rng = max_cliff - min_cliff or 1
+        for pos in valid_cliffs:
+            normalized = (cliffs[pos] - min_cliff) / rng
+            scarcity[pos]["scarcity_multiplier"] = round(0.95 + normalized * 0.25, 3)
+
     return scarcity
+
 
 def flag_players(players):
     for p in players:
