@@ -194,6 +194,8 @@ def merge_players(hitters, pitchers, pos_map, role_map):
                 if ptype == "hitter":
                     csv_pos  = normalize_pos(str(row.get("Pos",""))) or "OF"
                     real_pos = pos_map.get(raw_name, csv_pos)
+                    # Normalize any remaining OF variants
+                    if real_pos in ("LF","CF","RF"): real_pos = "OF"
                 else:
                     csv_pos  = normalize_pos(str(row.get("Pos",""))) or "SP"
                     real_pos = role_map.get(raw_name, csv_pos)
@@ -491,7 +493,9 @@ def add_scarcity(players):
     """
     pos_groups = {}
     for p in players:
-        pos = p.get("pos","?")
+        raw_pos = p.get("pos","?")
+        # Normalize all OF variants to OF
+        pos = "OF" if raw_pos in ("LF","CF","RF") else raw_pos
         if pos not in pos_groups: pos_groups[pos] = []
         pos_groups[pos].append(p)
 
