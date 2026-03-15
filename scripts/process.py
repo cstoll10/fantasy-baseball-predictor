@@ -58,44 +58,82 @@ def normalize_pos(p):
     return None
 
 def fetch_positions():
-    """Fetch positions from all years.
-    For each player, use their most recent year.
-    Within that year, pick the position with the most games played.
-    Falls back to earlier years if not found in recent data.
+    """
+    Position assignment logic:
+    1. Check 2025 fielding data — use position with most games played
+    2. If not in 2025, check 2024 (covers injured/limited players)
+    3. If found but games are very low (< 10) with high PA → assign DH
+    4. Falls back through 2023, 2022 in order
+    Also fetches batting stats to detect DH-primary players (like Ohtani).
     """
     try:
-        from pybaseball import fielding_stats
+        from pybaseball import fielding_stats, batting_stats
         # {name: {year: {pos: games}}}
-        yearly = {}
+        yearly_field = {}
+        # {name: {year: PA}} — to detect players with high PA but no fielding
+        yearly_bat   = {}
+
         for year in [2022, 2023, 2024, 2025]:
             try:
                 print(f"  Fetching fielding positions {year}...")
                 fielding = fielding_stats(year, year, qual=1)
                 for _, row in fielding.iterrows():
-                    name = str(row.get("Name","")).strip()
-                    pos  = normalize_pos(str(row.get("Pos","")))
+                    name  = str(row.get("Name","")).strip()
+                    pos   = normalize_pos(str(row.get("Pos","")))
                     if not pos or not name: continue
                     games = float(row.get("G", 1) or 1)
-                    if name not in yearly:
-                        yearly[name] = {}
-                    if year not in yearly[name]:
-                        yearly[name][year] = {}
-                    # Accumulate games per position within a year
-                    yearly[name][year][pos] = yearly[name][year].get(pos, 0) + games
+                    if name not in yearly_field:
+                        yearly_field[name] = {}
+                    if year not in yearly_field[name]:
+                        yearly_field[name][year] = {}
+                    yearly_field[name][year][pos] = yearly_field[name][year].get(pos, 0) + games
             except Exception as e:
-                print(f"  Could not fetch {year}: {e}")
+                print(f"  Could not fetch fielding {year}: {e}")
 
-        # Build pos_map: most recent year, primary position by games played
+            try:
+                batting = batting_stats(year, year, qual=50)
+                for _, row in batting.iterrows():
+                    name = str(row.get("Name","")).strip()
+                    pa   = float(row.get("PA", 0) or 0)
+                    if not name: continue
+                    if name not in yearly_bat:
+                        yearly_bat[name] = {}
+                    yearly_bat[name][year] = pa
+            except Exception as e:
+                print(f"  Could not fetch batting {year}: {e}")
+
         pos_map = {}
-        for name, year_dict in yearly.items():
-            most_recent_year = max(year_dict.keys())
-            pos_games = year_dict[most_recent_year]
-            # Primary = position with most games, respecting scarcity as tiebreaker
-            primary = max(pos_games.items(), key=lambda x: (
-                x[1],                                                    # games played (primary)
-                -(POS_PRIORITY.index(x[0]) if x[0] in POS_PRIORITY else 99)  # scarcity tiebreak
-            ))[0]
-            pos_map[name] = primary
+        # Process in priority order: 2025 first, then fall back
+        all_names = set(yearly_field.keys()) | set(yearly_bat.keys())
+        for name in all_names:
+            assigned = None
+            for year in [2025, 2024, 2023, 2022]:
+                field_data = yearly_field.get(name, {}).get(year, {})
+                bat_pa     = yearly_bat.get(name, {}).get(year, 0)
+
+                if field_data:
+                    total_field_games = sum(field_data.values())
+                    # Primary fielding position by games
+                    primary = max(field_data.items(), key=lambda x: (
+                        x[1],
+                        -(POS_PRIORITY.index(x[0]) if x[0] in POS_PRIORITY else 99)
+                    ))[0]
+
+                    # If fielding games are very low but PA is high → DH
+                    if total_field_games < 10 and bat_pa >= 100:
+                        assigned = "DH"
+                    else:
+                        assigned = primary
+                    break
+                elif bat_pa >= 100:
+                    # Has significant plate appearances but no fielding → DH
+                    assigned = "DH"
+                    break
+
+            if assigned:
+                # Normalize OF variants
+                if assigned in ("LF","CF","RF"): assigned = "OF"
+                pos_map[name] = assigned
 
         print(f"  Got positions for {len(pos_map)} players")
         return pos_map
