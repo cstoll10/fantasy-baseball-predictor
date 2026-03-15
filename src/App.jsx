@@ -1077,6 +1077,7 @@ export default function App() {
         <option value="zScore">Sort: Z-Score</option>
         <option value="CWS">Sort: CWS</option>
         <option value="WFPTS">Sort: WFPTS</option>
+              <option value="adp_rank">Sort: ADP</option>
       </select>
     </div>
   );
@@ -1160,6 +1161,7 @@ export default function App() {
                 <option value="zScore">Sort: Z-Score</option>
                 <option value="CWS">Sort: CWS</option>
                 <option value="WFPTS">Sort: WFPTS</option>
+              <option value="adp_rank">Sort: ADP</option>
               </select>
               {drafted.size>myKeepers.length&&(
                 <button onClick={()=>{
