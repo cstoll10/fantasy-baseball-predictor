@@ -1012,10 +1012,8 @@ function BreakoutBustBoard({players, drafted}) {
   const qualified=available.filter(p=>p.adp!=null||p.VAR>-2);
   const flagged=qualified.map(p=>({...p,_bb:getBreakoutBust(p)})).filter(p=>p._bb!=null)
     .sort((a,b)=>(b.disagreement_score||0)-(a.disagreement_score||0));
-  const breakouts_sorted=breakouts.sort((a,b)=>b.VAR-a.VAR);
-  const busts_sorted=busts.sort((a,b)=>a.VAR-b.VAR);
-  const breakouts=flagged.filter(p=>!p._bb.flag.includes("Bust"));
-  const busts=flagged.filter(p=>p._bb.flag.includes("Bust"));
+  const breakouts=[...flagged.filter(p=>!p._bb.flag.includes("Bust"))].sort((a,b)=>b.VAR-a.VAR);
+  const busts=[...flagged.filter(p=>p._bb.flag.includes("Bust"))].sort((a,b)=>a.VAR-b.VAR);
 
   const Card=({p})=>{
     const bb=p._bb, pc=posColor(p.pos||"?"), vc=p.VAR>=8?"#057A55":p.VAR>=2?"#1B3FA0":"#6B7280";
@@ -1056,7 +1054,7 @@ function BreakoutBustBoard({players, drafted}) {
         <div style={{overflowY:"auto",maxHeight:"calc(100vh - 220px)"}}>
           {breakouts.length===0
             ?<div style={{color:"#6B7280",fontSize:12,padding:12}}>None detected with current filters</div>
-            :breakouts_sorted.map(p=><Card key={p.id} p={p}/>)
+            :breakouts.map(p=><Card key={p.id} p={p}/>)
           }
         </div>
       </div>
@@ -1069,7 +1067,7 @@ function BreakoutBustBoard({players, drafted}) {
         <div style={{overflowY:"auto",maxHeight:"calc(100vh - 220px)"}}>
           {busts.length===0
             ?<div style={{color:"#6B7280",fontSize:12,padding:12}}>None detected with current filters</div>
-            :busts_sorted.map(p=><Card key={p.id} p={p}/>)
+            :busts.map(p=><Card key={p.id} p={p}/>)
           }
         </div>
       </div>
