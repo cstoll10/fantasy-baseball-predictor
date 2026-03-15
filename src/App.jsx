@@ -156,7 +156,7 @@ function buildSkillPercentiles(allPlayers, type) {
 // ── Sparkline ─────────────────────────────────────────────────────────────────
 function Sparkline({values, higherBetter, pct2025}) {
   const valid=values.filter(v=>v!=null);
-  if (valid.length<2) return <span style={{color:"#B8B4AA",fontSize:10}}>—</span>;
+  if (valid.length<2) return <span style={{color:"#1A1A2E",fontSize:10}}>—</span>;
   const min=Math.min(...valid),max=Math.max(...valid),range=max-min||0.001;
   const w=56,h=16;
   const pts=values.map((v,i)=>{
@@ -188,13 +188,13 @@ function StatCard({cat, val, pct}) {
   return (
     <div style={{background:"#FFFFFF",border:"1px solid #E2DFD8",borderRadius:8,
       padding:"10px 12px",display:"flex",flexDirection:"column",gap:4}}>
-      <div style={{fontSize:9,color:"#8A8A9E",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.6px"}}>{cat}</div>
+      <div style={{fontSize:9,color:"#1A1A2E",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.6px"}}>{cat}</div>
       <div style={{fontSize:22,fontWeight:700,color,fontFamily:"'DM Mono',monospace",lineHeight:1}}>{fmtStat(val,cat)}</div>
       <div>
         <div style={{height:3,background:"#E2DFD8",borderRadius:2,marginBottom:3,overflow:"hidden"}}>
           <div style={{height:"100%",width:`${(ep??0)*100}%`,background:color,borderRadius:2,transition:"width 0.5s"}}/>
         </div>
-        <div style={{fontSize:9,color:ord?color:"#AAAABC",fontFamily:"'DM Mono',monospace"}}>{ord||"—"}</div>
+        <div style={{fontSize:9,color:ord?color:"#1A1A2E",fontFamily:"'DM Mono',monospace"}}>{ord||"—"}</div>
       </div>
     </div>
   );
@@ -204,7 +204,7 @@ function StatCard({cat, val, pct}) {
 function SystemsPanel({player, per600}) {
   const cats=player.type==="hitter"?HIT_FANTASY:PIT_FANTASY;
   const available=SYSTEMS.filter(s=>player.systems?.[s]);
-  if (!available.length) return <div style={{color:"#9A9AAE",fontSize:12,padding:8}}>No system data.</div>;
+  if (!available.length) return <div style={{color:"#1A1A2E",fontSize:12,padding:8}}>No system data.</div>;
   return (
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
       {cats.map(cat=>{
@@ -226,7 +226,7 @@ function SystemsPanel({player, per600}) {
         return (
           <div key={cat}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:7}}>
-              <span style={{fontSize:11,fontWeight:700,color:"#6B6B7E",textTransform:"uppercase",letterSpacing:"0.6px"}}>{cat}</span>
+              <span style={{fontSize:11,fontWeight:700,color:"#1A1A2E",textTransform:"uppercase",letterSpacing:"0.6px"}}>{cat}</span>
               <div style={{display:"flex",gap:10,alignItems:"center"}}>
                 {pct!=null&&<span style={{fontSize:10,color,fontFamily:"'DM Mono',monospace"}}>{ordinal(ep)}</span>}
                 <span style={{fontSize:13,fontWeight:700,color,fontFamily:"'DM Mono',monospace"}}>{fmtStat(consVal,cat)}</span>
@@ -238,9 +238,9 @@ function SystemsPanel({player, per600}) {
                 const sc=SYS_COLORS[sys];
                 return (
                   <div key={sys} style={{display:"flex",alignItems:"center",gap:8}}>
-                    <div style={{width:82,fontSize:10,color:"#8A8A9E",display:"flex",alignItems:"center",gap:5,flexShrink:0}}>
+                    <div style={{width:82,fontSize:10,color:"#1A1A2E",display:"flex",alignItems:"center",gap:5,flexShrink:0}}>
                       <span style={{width:6,height:6,borderRadius:"50%",background:sc,display:"inline-block",flexShrink:0}}/>
-                      <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sys}</span>
+                      <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:"#1A1A2E",fontWeight:500}}>{sys}</span>
                     </div>
                     <div style={{flex:1,height:6,background:"#E2DFD8",borderRadius:3,overflow:"hidden"}}>
                       <div style={{height:"100%",width:`${barW*100}%`,background:sc,borderRadius:3,opacity:0.85}}/>
@@ -274,7 +274,7 @@ function DisagreementPanel({player}) {
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",
         padding:"6px 0 10px",marginBottom:8,borderBottom:"2px solid #E2DFD8"}}>
-        <span style={{fontSize:11,color:"#6B6B7E",fontWeight:700}}>Overall Agreement</span>
+        <span style={{fontSize:11,color:"#1A1A2E",fontWeight:700}}>Overall Agreement</span>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           <span style={{fontSize:16}}>{disLabel(overall)}</span>
           <span style={{fontSize:11,color:disColor(overall),fontFamily:"'DM Mono',monospace",fontWeight:700}}>
@@ -289,7 +289,7 @@ function DisagreementPanel({player}) {
         return (
           <div key={cat} style={{display:"flex",justifyContent:"space-between",alignItems:"center",
             padding:"5px 0",borderBottom:"1px solid #EEF0F8"}}>
-            <span style={{fontSize:11,color:"#8A8A9E"}}>{cat}</span>
+            <span style={{fontSize:11,color:"#1A1A2E"}}>{cat}</span>
             <div style={{display:"flex",alignItems:"center",gap:8}}>
               <div style={{width:70,height:3,background:"#E2DFD8",borderRadius:2}}>
                 <div style={{height:"100%",width:`${Math.min(cv*200,100)}%`,background:color,borderRadius:2}}/>
@@ -311,15 +311,15 @@ function SkillsPanel({player, skillPctFns}) {
   const seasons=[...new Set(history.map(h=>h.season).filter(Boolean))].sort().slice(-4);
   return (
     <div style={{background:"#F2F1ED",border:"1px solid #E2DFD8",borderRadius:8,padding:12}}>
-      <div style={{fontSize:9,color:"#9A9AAE",fontWeight:700,marginBottom:10,textTransform:"uppercase",letterSpacing:"0.8px"}}>Skill Metrics — Year over Year</div>
+      <div style={{fontSize:9,color:"#1A1A2E",fontWeight:700,marginBottom:10,textTransform:"uppercase",letterSpacing:"0.8px"}}>Skill Metrics — Year over Year</div>
       {seasons.length===0?(
-        <div style={{color:"#AAAABC",fontSize:12,textAlign:"center",padding:20}}>No historical skill data</div>
+        <div style={{color:"#1A1A2E",fontSize:12,textAlign:"center",padding:20}}>No historical skill data</div>
       ):(
         <>
           <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:6,paddingBottom:5,borderBottom:"1px solid #E2DFD8"}}>
-            <div style={{width:78,flexShrink:0,fontSize:9,color:"#AAAABC",fontWeight:700}}>Stat</div>
-            <div style={{width:58,flexShrink:0,fontSize:9,color:"#AAAABC",fontWeight:700,textAlign:"center"}}>Trend</div>
-            {seasons.map(s=><div key={s} style={{flex:1,fontSize:9,color:"#9A9AAE",fontWeight:700,textAlign:"right"}}>{s}</div>)}
+            <div style={{width:78,flexShrink:0,fontSize:9,color:"#1A1A2E",fontWeight:700}}>Stat</div>
+            <div style={{width:58,flexShrink:0,fontSize:9,color:"#1A1A2E",fontWeight:700,textAlign:"center"}}>Trend</div>
+            {seasons.map(s=><div key={s} style={{flex:1,fontSize:9,color:"#1A1A2E",fontWeight:700,textAlign:"right"}}>{s}</div>)}
           </div>
           {skills.map(skill=>{
             const vals=seasons.map(s=>{const h=history.find(h=>h.season===s);return h?h[skill.key]??null:null;});
@@ -329,13 +329,13 @@ function SkillsPanel({player, skillPctFns}) {
             const latestColor=skillPctColor(rawPct,skill.higherBetter);
             return (
               <div key={skill.key} style={{display:"flex",alignItems:"center",gap:4,padding:"3px 0",borderBottom:"1px solid #0f0f1a"}}>
-                <div style={{width:78,flexShrink:0,fontSize:10,color:"#7A7A8E",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{skill.label}</div>
+                <div style={{width:78,flexShrink:0,fontSize:10,color:"#1A1A2E",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{skill.label}</div>
                 <div style={{width:58,flexShrink:0,textAlign:"center"}}>
-                  {hasData?<Sparkline values={vals} higherBetter={skill.higherBetter} pct2025={rawPct}/>:<span style={{color:"#B8B4AA",fontSize:10}}>—</span>}
+                  {hasData?<Sparkline values={vals} higherBetter={skill.higherBetter} pct2025={rawPct}/>:<span style={{color:"#1A1A2E",fontSize:10}}>—</span>}
                 </div>
                 {vals.map((v,i)=>{
                   const isLatest=i===vals.length-1;
-                  return <div key={i} style={{flex:1,textAlign:"right",fontFamily:"'DM Mono',monospace",fontSize:10,fontWeight:isLatest?700:400,color:v==null?"#B8B4AA":isLatest?latestColor:"#8A8A9E"}}>{fmtSkill(v,skill.fmt)}</div>;
+                  return <div key={i} style={{flex:1,textAlign:"right",fontFamily:"'DM Mono',monospace",fontSize:10,fontWeight:isLatest?700:400,color:v==null?"#D1D5DB":isLatest?latestColor:"#374151"}}>{fmtSkill(v,skill.fmt)}</div>;
                 })}
               </div>
             );
@@ -345,7 +345,7 @@ function SkillsPanel({player, skillPctFns}) {
               {color:"#FCA5A5",label:"Bot 25%"},{color:"#C41E3A",label:"Bot 10%"},{color:"#EF4444",label:"Bot 5%"}].map(({color,label})=>(
               <div key={label} style={{display:"flex",alignItems:"center",gap:4}}>
                 <div style={{width:8,height:8,borderRadius:2,background:color}}/>
-                <span style={{fontSize:9,color:"#8A8A9E"}}>{label}</span>
+                <span style={{fontSize:9,color:"#1A1A2E"}}>{label}</span>
               </div>
             ))}
           </div>
@@ -363,16 +363,16 @@ function HistoricalPanel({player, skillPctFns}) {
   return (
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
       {seasons.length===0?(
-        <div style={{background:"#F2F1ED",border:"1px solid #E2DFD8",borderRadius:8,padding:20,textAlign:"center",color:"#AAAABC",fontSize:12}}>No historical data</div>
+        <div style={{background:"#F2F1ED",border:"1px solid #E2DFD8",borderRadius:8,padding:20,textAlign:"center",color:"#1A1A2E",fontSize:12}}>No historical data</div>
       ):(
         <div style={{background:"#F2F1ED",border:"1px solid #E2DFD8",borderRadius:8,padding:14}}>
-          <div style={{fontSize:9,color:"#9A9AAE",fontWeight:700,marginBottom:12,textTransform:"uppercase",letterSpacing:"0.8px"}}>Season Stats (2022–2025)</div>
+          <div style={{fontSize:9,color:"#1A1A2E",fontWeight:700,marginBottom:12,textTransform:"uppercase",letterSpacing:"0.8px"}}>Season Stats (2022–2025)</div>
           <div style={{overflowX:"auto"}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,fontFamily:"'DM Mono',monospace"}}>
               <thead>
                 <tr>
-                  <th style={{textAlign:"left",padding:"4px 6px",color:"#9A9AAE",fontSize:10,fontWeight:700}}>Season</th>
-                  {statKeys.map(k=><th key={k} style={{textAlign:"right",padding:"4px 5px",color:"#9A9AAE",fontSize:10,fontWeight:700}}>{k}</th>)}
+                  <th style={{textAlign:"left",padding:"4px 6px",color:"#1A1A2E",fontSize:10,fontWeight:700}}>Season</th>
+                  {statKeys.map(k=><th key={k} style={{textAlign:"right",padding:"4px 5px",color:"#1A1A2E",fontSize:10,fontWeight:700}}>{k}</th>)}
                 </tr>
               </thead>
               <tbody>
@@ -419,10 +419,10 @@ function PlayerPanel({player,allPlayers,per600,showPct,onClose,onNavigate,skillP
         <div style={{flex:1,minWidth:0}}>
           <div style={{fontSize:16,fontWeight:700,color:"#1A1A2E",letterSpacing:"-0.3px",
             overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{player.name}</div>
-          <div style={{fontSize:12,color:"#7A7A8E",marginTop:4,display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-            <span>{player.team}</span><span style={{color:"#B8B4AA"}}>·</span>
-            <span>{player.pos||"?"}</span>
-            {war!=null&&<><span style={{color:"#B8B4AA"}}>·</span>
+          <div style={{fontSize:12,color:"#1A1A2E",marginTop:4,display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+            <span>{player.team}</span><span style={{color:"#1A1A2E"}}>·</span>
+            <span style={{color:posColor(player.pos||"?"),fontWeight:700}}>{player.pos||"?"}</span>
+            {war!=null&&<><span style={{color:"#1A1A2E"}}>·</span>
               <span style={{color:"#4338CA",fontFamily:"'DM Mono',monospace",fontWeight:700}}>
                 {war>0?"+":""}{Number(war).toFixed(1)} WAR
               </span></>}
@@ -432,7 +432,7 @@ function PlayerPanel({player,allPlayers,per600,showPct,onClose,onNavigate,skillP
               </span>
             ))}
           </div>
-          <div style={{fontSize:10,color:"#9A9AAE",marginTop:3,fontFamily:"'DM Mono',monospace",display:"flex",alignItems:"center",flexWrap:"wrap",gap:4}}>
+          <div style={{fontSize:10,color:"#1A1A2E",marginTop:3,fontFamily:"'DM Mono',monospace",display:"flex",alignItems:"center",flexWrap:"wrap",gap:4}}>
             <span>{player.type==="hitter"?`${Math.round(player.consensus?.PA||0)} PA`:`${Math.round(player.consensus?.IP||0)} IP`}</span>
             <span>·</span>
             <span>{Object.keys(player.systems||{}).length} sys</span>
@@ -455,7 +455,7 @@ function PlayerPanel({player,allPlayers,per600,showPct,onClose,onNavigate,skillP
           <button onClick={()=>onNavigate(1)} disabled={idx>=allPlayers.length-1}
             style={{background:"none",border:"1px solid #B8B4AA",borderRadius:5,color:idx>=allPlayers.length-1?"#222":"#777",cursor:idx>=allPlayers.length-1?"default":"pointer",padding:"3px 7px",fontSize:12}}>→</button>
           <button onClick={onClose}
-            style={{background:"none",border:"1px solid #B8B4AA",borderRadius:5,color:"#8A8A9E",cursor:"pointer",padding:"3px 8px",fontSize:13}}>×</button>
+            style={{background:"none",border:"1px solid #B8B4AA",borderRadius:5,color:"#1A1A2E",cursor:"pointer",padding:"3px 8px",fontSize:13}}>×</button>
         </div>
       </div>
       {/* Metrics */}
@@ -468,12 +468,12 @@ function PlayerPanel({player,allPlayers,per600,showPct,onClose,onNavigate,skillP
           const ord=ordinal(pct);
           return (
             <div key={lbl} style={{background:c+"10",border:`1px solid ${c}25`,borderRadius:8,padding:"8px 10px",textAlign:"center"}}>
-              <div style={{fontSize:8,color:"#9A9AAE",marginBottom:1,letterSpacing:"0.4px"}}>{lbl}</div>
+              <div style={{fontSize:8,color:"#6B7280",marginBottom:1,letterSpacing:"0.4px"}}>{lbl}</div>
               <div style={{fontSize:18,fontWeight:700,color:"#1A1A2E",fontFamily:"'DM Mono',monospace",lineHeight:1.1}}>
                 {val!=null?(val>0&&lbl==="VAR"?"+":"")+val:"—"}
               </div>
               {ord&&<div style={{fontSize:9,color:c,fontFamily:"'DM Mono',monospace",marginTop:2,fontWeight:600}}>{ord}</div>}
-              <div style={{fontSize:8,color:"#AAAABC",marginTop:1}}>{sub}</div>
+              <div style={{fontSize:8,color:"#1A1A2E",marginTop:1}}>{sub}</div>
             </div>
           );
         })}
@@ -485,7 +485,7 @@ function PlayerPanel({player,allPlayers,per600,showPct,onClose,onNavigate,skillP
       </div>
       {panelTab==="overview"&&(
         <div>
-          <div style={{fontSize:9,color:"#9A9AAE",fontWeight:700,marginBottom:10,textTransform:"uppercase",letterSpacing:"0.8px"}}>
+          <div style={{fontSize:9,color:"#1A1A2E",fontWeight:700,marginBottom:10,textTransform:"uppercase",letterSpacing:"0.8px"}}>
             Key Stats — vs top pool {per600?"(per 600 PA)":""}
           </div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
@@ -499,7 +499,7 @@ function PlayerPanel({player,allPlayers,per600,showPct,onClose,onNavigate,skillP
       )}
       {panelTab==="systems"&&(
         <div>
-          <div style={{fontSize:9,color:"#9A9AAE",fontWeight:700,marginBottom:12,textTransform:"uppercase",letterSpacing:"0.8px"}}>
+          <div style={{fontSize:9,color:"#1A1A2E",fontWeight:700,marginBottom:12,textTransform:"uppercase",letterSpacing:"0.8px"}}>
             Fantasy Stats by System {per600?"(per 600 PA)":""}
           </div>
           <SystemsPanel player={player} per600={per600}/>
@@ -507,7 +507,7 @@ function PlayerPanel({player,allPlayers,per600,showPct,onClose,onNavigate,skillP
       )}
       {panelTab==="disagree"&&(
         <div style={{background:"#F2F1ED",border:"1px solid #E2DFD8",borderRadius:8,padding:14}}>
-          <div style={{fontSize:9,color:"#9A9AAE",fontWeight:700,marginBottom:10,textTransform:"uppercase",letterSpacing:"0.8px"}}>Model Agreement per Category</div>
+          <div style={{fontSize:9,color:"#1A1A2E",fontWeight:700,marginBottom:10,textTransform:"uppercase",letterSpacing:"0.8px"}}>Model Agreement per Category</div>
           <DisagreementPanel player={player}/>
         </div>
       )}
@@ -524,18 +524,18 @@ function ColumnHeaders({isHitter, showPct, isDraftBoard=false}) {
     <div style={{display:"flex",alignItems:"flex-end",gap:6,padding:"4px 12px 6px",
       borderBottom:"1px solid #D4D0C8",marginBottom:4,userSelect:"none"}}>
       <div style={{width:22,flexShrink:0}}/>
-      <div style={{width:26,flexShrink:0,fontSize:9,color:"#AAAABC",textTransform:"uppercase",letterSpacing:"0.4px",textAlign:"center"}}>POS</div>
-      <div style={{minWidth:140,maxWidth:180,flexShrink:0,fontSize:9,color:"#9A9AAE",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.5px"}}>Player</div>
+      <div style={{width:26,flexShrink:0,fontSize:9,color:"#1A1A2E",textTransform:"uppercase",letterSpacing:"0.4px",textAlign:"center"}}>POS</div>
+      <div style={{minWidth:140,maxWidth:180,flexShrink:0,fontSize:9,color:"#1A1A2E",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.5px"}}>Player</div>
       <div style={{display:"flex",gap:8,flexShrink:0}}>
         {cols.map(cat=>(
           <div key={cat} style={{minWidth:36,textAlign:"right"}}>
-            <div style={{fontSize:9,color:"#8A8A9E",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.4px"}}>{cat}</div>
-            {showPct&&<div style={{fontSize:8,color:"#B8B4AA",marginTop:1}}>rank</div>}
+            <div style={{fontSize:9,color:"#1A1A2E",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.4px"}}>{cat}</div>
+            {showPct&&<div style={{fontSize:8,color:"#1A1A2E",marginTop:1}}>rank</div>}
           </div>
         ))}
       </div>
-      <div style={{minWidth:26,textAlign:"center",flexShrink:0,fontSize:9,color:"#8A8A9E",fontWeight:700}}>AGR</div>
-      <div style={{minWidth:36,textAlign:"right",flexShrink:0,fontSize:9,color:"#8A8A9E",fontWeight:700}}>VAR</div>
+      <div style={{minWidth:26,textAlign:"center",flexShrink:0,fontSize:9,color:"#1A1A2E",fontWeight:700}}>AGR</div>
+      <div style={{minWidth:36,textAlign:"right",flexShrink:0,fontSize:9,color:"#1A1A2E",fontWeight:700}}>VAR</div>
       {isDraftBoard&&<div style={{minWidth:52,flexShrink:0}}/>}
     </div>
   );
@@ -556,15 +556,16 @@ function PlayerRow({player,rank,isSelected,isDrafted,isOtherDraft,isKeeper,isMyK
     <div onClick={()=>!isDrafted&&onSelect(player)||isDrafted&&onSelect(player)}
       style={{display:"flex",alignItems:"center",gap:6,padding:"6px 12px",
         borderRadius:7,cursor:"pointer",marginBottom:2,
-        background:isMyKeeper?"#0d1a0d":isOtherDraft?"#1a0d0d":isSelected?"#EEF0F8":dimmed?"#0a0a0d":"#F9F8F5",
-        border:isMyKeeper?"1px solid #057A5540":isOtherDraft?"1px solid #C41E3A40":isSelected?"1px solid #1B3FA045":"1px solid #EEF0F8",
+        background:isMyKeeper?"#ECFDF5":isOtherDraft?"#FEF2F2":isSelected?"#EEF0F8":dimmed?"#F0F0F0":"#F9F8F5",
+        border:isMyKeeper?"1px solid #057A5570":isOtherDraft?"1px solid #C41E3A50":isSelected?"1px solid #1B3FA045":"1px solid #EEF0F8",
         opacity:dimmed?0.35:1,transition:"all 0.1s"}}>
-      <span style={{width:22,fontSize:10,color:"#B8B4AA",fontFamily:"'DM Mono',monospace",flexShrink:0}}>{rank}</span>
-      <div style={{width:26,height:26,borderRadius:4,background:"#E2DFD8",border:"1px solid #B8B4AA",
+      <span style={{width:22,fontSize:10,color:"#1A1A2E",fontFamily:"'DM Mono',monospace",flexShrink:0}}>{rank}</span>
+      {(()=>{const pc=posColor(player.pos||"?");return(
+      <div style={{width:26,height:26,borderRadius:4,background:pc+"22",border:`1px solid ${pc}80`,
         display:"flex",alignItems:"center",justifyContent:"center",
-        fontSize:8,fontWeight:700,color:"#6B6B7E",flexShrink:0}}>
+        fontSize:8,fontWeight:700,color:pc,flexShrink:0}}>
         {(player.pos||"?").slice(0,3)}
-      </div>
+      </div>);})()} 
       <div style={{minWidth:140,maxWidth:180,flexShrink:0}}>
         <div style={{display:"flex",alignItems:"center",gap:4}}>
           <span style={{fontSize:13,fontWeight:600,
@@ -574,10 +575,10 @@ function PlayerRow({player,rank,isSelected,isDrafted,isOtherDraft,isKeeper,isMyK
             {player.name}
           </span>
           {isMyKeeper&&<span style={{fontSize:9,color:"#057A55",flexShrink:0,fontWeight:700}}>K</span>}
-          {isDrafted&&!isMyKeeper&&<span style={{fontSize:9,color:"#8A8A9E",flexShrink:0}}>drafted</span>}
+          {isDrafted&&!isMyKeeper&&<span style={{fontSize:9,color:"#1A1A2E",flexShrink:0}}>drafted</span>}
           {flags.length>0&&<span style={{fontSize:9,color:"#C41E3A",flexShrink:0}}>⚠</span>}
         </div>
-        <div style={{fontSize:10,color:"#9A9AAE"}}>{player.team}</div>
+        <div style={{fontSize:10,color:"#1A1A2E",fontWeight:500}}>{player.team}</div>
       </div>
       <div style={{display:"flex",gap:8,flexShrink:0}}>
         {cols.map(cat=>{
@@ -590,7 +591,7 @@ function PlayerRow({player,rank,isSelected,isDrafted,isOtherDraft,isKeeper,isMyK
           return (
             <div key={cat} style={{minWidth:36,textAlign:"right"}}>
               <div style={{color,fontWeight:600,fontFamily:"'DM Mono',monospace",fontSize:11}}>{fmtStat(val,cat)}</div>
-              {showPct&&<div style={{fontSize:9,color:ep!=null?color:"#AAAABC",fontFamily:"'DM Mono',monospace"}}>{ep!=null?ordinal(ep):"—"}</div>}
+              {showPct&&<div style={{fontSize:9,color:ep!=null?color:"#1A1A2E",fontFamily:"'DM Mono',monospace"}}>{ep!=null?ordinal(ep):"—"}</div>}
             </div>
           );
         })}
@@ -600,7 +601,7 @@ function PlayerRow({player,rank,isSelected,isDrafted,isOtherDraft,isKeeper,isMyK
         <div style={{color:vc,fontWeight:700,fontFamily:"'DM Mono',monospace",fontSize:11}}>
           {player.VAR>0?"+":""}{player.VAR}
         </div>
-        {showPct&&<div style={{fontSize:9,color:"#AAAABC",fontFamily:"'DM Mono',monospace"}}>var</div>}
+        {showPct&&<div style={{fontSize:9,color:"#1A1A2E",fontFamily:"'DM Mono',monospace"}}>var</div>}
       </div>
       {isDraftBoard&&(
         <div style={{minWidth:52,flexShrink:0,textAlign:"right"}}>
@@ -653,7 +654,7 @@ function ScarcityBar({pos, scarcity, drafted, players}) {
       <div style={{height:4,background:"#E2DFD8",borderRadius:2,overflow:"hidden",marginBottom:3}}>
         <div style={{height:"100%",width:`${pct*100}%`,background:color,borderRadius:2,transition:"width 0.4s"}}/>
       </div>
-      <div style={{fontSize:8,color:"#9A9AAE"}}>drop: {s.drop_off?.toFixed(1)} · {isScarce?"🔴":"🟢"}</div>
+      <div style={{fontSize:8,color:"#6B7280"}}>drop: {s.drop_off?.toFixed(1)} · {isScarce?"🔴":"🟢"}</div>
     </div>
   );
 }
@@ -704,11 +705,11 @@ function StrategyPanel({players, drafted, myDrafted, myKeepers, scarcity, curren
           </div>
           <div style={{flex:1,minWidth:0}}>
             <div style={{fontSize:12,fontWeight:600,color:"#1A1A2E",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</div>
-            <div style={{fontSize:10,color:"#9A9AAE"}}>{p.team} · {p.pos}{p._needPos?<span style={{color:"#D97706"}}> (fills {p._needPos})</span>:""}</div>
+            <div style={{fontSize:10,color:"#1A1A2E"}}>{p.team} · {p.pos}{p._needPos?<span style={{color:"#D97706"}}> (fills {p._needPos})</span>:""}</div>
           </div>
           <div style={{textAlign:"right",flexShrink:0}}>
             <div style={{fontSize:11,fontWeight:700,color:varColor(p.VAR),fontFamily:"'DM Mono',monospace"}}>{p.VAR>0?"+":""}{p.VAR}</div>
-            <div style={{fontSize:9,color:"#9A9AAE"}}>VAR</div>
+            <div style={{fontSize:9,color:"#1A1A2E"}}>VAR</div>
           </div>
         </div>
       ))}
@@ -722,7 +723,7 @@ function StrategyPanel({players, drafted, myDrafted, myKeepers, scarcity, curren
           Draft Strategy — Pick {currentPick}
           {isMyPick&&<span style={{color:"#057A55",marginLeft:8,fontSize:11}}>← YOUR PICK</span>}
         </div>
-        <div style={{fontSize:10,color:"#9A9AAE"}}>
+        <div style={{fontSize:10,color:"#1A1A2E"}}>
           {myRoster.length} rostered · {needed.length} positions needed
         </div>
       </div>
@@ -751,7 +752,7 @@ function MyRoster({myPicks, draftLog, myKeepers, currentPick}) {
   return (
     <div style={{width:220,flexShrink:0,background:"#FFFFFF",border:"1px solid #E2DFD8",
       borderRadius:12,padding:14,position:"sticky",top:16,maxHeight:"calc(100vh - 32px)",overflowY:"auto"}}>
-      <div style={{fontSize:10,fontWeight:700,color:"#9A9AAE",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:12}}>
+      <div style={{fontSize:10,fontWeight:700,color:"#1A1A2E",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:12}}>
         My Roster · Pick {MY_PICK}
       </div>
       {/* Keepers */}
@@ -759,12 +760,12 @@ function MyRoster({myPicks, draftLog, myKeepers, currentPick}) {
         <div key={p.id} style={{display:"flex",gap:8,padding:"5px 7px",borderRadius:5,marginBottom:2,
           background:"#0d1a0d",border:"1px solid #057A5530"}}>
           <div style={{width:28,flexShrink:0}}>
-            <div style={{fontSize:9,color:"#057A55",fontWeight:700}}>KEEP</div>
-            <div style={{fontSize:8,color:"#D4D0C8"}}>#{i+1}</div>
+            <div style={{fontSize:9,color:"#057A55",fontWeight:700,textTransform:"uppercase"}}>Keep</div>
+            <div style={{fontSize:8,color:"#6B7280"}}>#{i+1}</div>
           </div>
           <div style={{flex:1,minWidth:0}}>
             <div style={{fontSize:11,fontWeight:600,color:"#057A55",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{p.name}</div>
-            <div style={{fontSize:9,color:"#8A8A9E"}}>{p.pos} · {p.team}</div>
+            <div style={{fontSize:9,color:"#1A1A2E"}}>{p.pos} · {p.team}</div>
           </div>
         </div>
       ))}
@@ -779,12 +780,12 @@ function MyRoster({myPicks, draftLog, myKeepers, currentPick}) {
             border:isCurrent?"1px solid #1B3FA025":"1px solid transparent"}}>
             <div style={{width:28,flexShrink:0}}>
               <div style={{fontSize:9,color:"#1B3FA0",fontWeight:700}}>R{round}</div>
-              <div style={{fontSize:8,color:"#D4D0C8",fontFamily:"'DM Mono',monospace"}}>#{overall}</div>
+              <div style={{fontSize:8,color:"#6B7280",fontFamily:"'DM Mono',monospace"}}>#{overall}</div>
             </div>
             {entry?(
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontSize:11,fontWeight:600,color:"#1A1A2E",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{entry.player.name}</div>
-                <div style={{fontSize:9,color:"#9A9AAE"}}>{entry.player.pos} · {entry.player.team}</div>
+                <div style={{fontSize:9,color:"#1A1A2E"}}>{entry.player.pos} · {entry.player.team}</div>
               </div>
             ):(
               <div style={{flex:1,fontSize:10,color:isCurrent?"#1B3FA0":"#E2DFD8",fontStyle:"italic"}}>
@@ -805,7 +806,7 @@ function LoadingScreen() {
       alignItems:"center",justifyContent:"center",fontFamily:"'DM Mono',monospace",gap:16,color:"#1A1A2E"}}>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;600&display=swap');`}</style>
       <div style={{fontSize:28}}>⚾</div>
-      <div style={{fontSize:14,color:"#1B3FA0",fontWeight:600}}>Loading 2026 Projections…</div>
+      <div style={{fontSize:14,color:"#1B3FA0",fontWeight:700}}>Loading 2026 Projections…</div>
       <div style={{width:200,height:2,background:"#E2DFD8",borderRadius:2,overflow:"hidden"}}>
         <div style={{height:"100%",background:"#1B3FA0",borderRadius:2,animation:"load 1.4s ease-in-out infinite",width:"40%"}}/>
       </div>
@@ -819,7 +820,7 @@ function ErrorScreen({msg}) {
       alignItems:"center",justifyContent:"center",fontFamily:"system-ui",gap:12,padding:24}}>
       <div style={{fontSize:28}}>⚠️</div>
       <div style={{fontSize:16,fontWeight:700,color:"#C41E3A"}}>Could not load player data</div>
-      <div style={{fontSize:13,color:"#8A8A9E",maxWidth:440,textAlign:"center"}}>{msg}</div>
+      <div style={{fontSize:13,color:"#1A1A2E",maxWidth:440,textAlign:"center"}}>{msg}</div>
     </div>
   );
 }
@@ -1000,7 +1001,7 @@ export default function App() {
   const isMyPick2   = id=>drafted.has(id)&&!otherDrafted.has(id)&&!isMyKeeper(id);
 
   const PlayerList=({list,isDraftBoard=false})=>{
-    if (list.length===0) return <div style={{color:"#B8B4AA",fontSize:13,textAlign:"center",padding:40}}>No players found.</div>;
+    if (list.length===0) return <div style={{color:"#1A1A2E",fontSize:13,textAlign:"center",padding:40}}>No players found.</div>;
     const isHitter=list.filter(p=>p.type==="hitter").length>=list.filter(p=>p.type==="pitcher").length;
     return (
       <>
@@ -1047,7 +1048,7 @@ export default function App() {
         {posOptions.map(p=><option key={p} value={p}>{p==="All"?"All Positions":p}</option>)}
       </select>
       <div style={{width:1,height:18,background:"#B8B4AA",flexShrink:0}}/>
-      <span style={{fontSize:9,color:"#9A9AAE",fontWeight:700,letterSpacing:"0.5px",textTransform:"uppercase"}}>Agreement:</span>
+      <span style={{fontSize:9,color:"#1A1A2E",fontWeight:700,letterSpacing:"0.5px",textTransform:"uppercase"}}>Agreement:</span>
       <div style={{display:"flex",gap:4}}>
         {Pill("All",disFilter,setDisFilter,"All","#1B3FA0")}
         {Pill("High",disFilter,setDisFilter,"🟢 High","#057A55")}
@@ -1084,7 +1085,7 @@ export default function App() {
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
             <div style={{display:"flex",alignItems:"baseline",gap:12}}>
               <span style={{fontSize:17,fontWeight:700,color:"#1A1A2E",letterSpacing:"-0.4px"}}>⚾ Fantasy Baseball 2026</span>
-              <span style={{fontSize:10,color:"#B8B4AA",fontFamily:"'DM Mono',monospace"}}>
+              <span style={{fontSize:10,color:"#1A1A2E",fontFamily:"'DM Mono',monospace"}}>
                 {players.length} players
                 {tab==="draft"&&` · ${drafted.size} drafted · pick ${currentPick}`}
                 {data?.generated&&` · Updated ${new Date(data.generated).toLocaleDateString()}`}
