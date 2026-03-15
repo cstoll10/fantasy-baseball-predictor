@@ -268,7 +268,7 @@ def merge_players(hitters, pitchers, pos_map, role_map):
                     "SLG":  get(row,"SLG"), "wOBA": get(row,"wOBA"),
                     "wRC+": get(row,"wRC+"),"BABIP":get(row,"BABIP"),
                     "BB%":  get(row,"BB%"), "K%":   get(row,"K%"),
-                    "ISO":  get(row,"ISO"),
+                    "ISO":  get(row,"ISO"), "ADP":  get(row,"ADP"),
                 }
             else:
                 p["systems"][row["_system"]] = {
@@ -278,6 +278,7 @@ def merge_players(hitters, pitchers, pos_map, role_map):
                     "WHIP": get(row,"WHIP"),"SV":   get(row,"SV"),
                     "HLD":  get(row,"HLD","HD"), "QS": get(row,"QS"),
                     "BB":   get(row,"BB"),  "FIP":  get(row,"FIP"),
+                    "ADP":  get(row,"ADP"),
                 }
     if not hitters.empty:  process(hitters,  "hitter")
     if not pitchers.empty: process(pitchers, "pitcher")
@@ -308,9 +309,9 @@ def merge_players(hitters, pitchers, pos_map, role_map):
 def add_consensus(players):
     for p in players:
         cats = (["G","PA","R","HR","RBI","SB","H","TB","AVG","OBP","SLG",
-                 "wOBA","wRC+","BABIP","BB%","K%","ISO"]
+                 "wOBA","wRC+","BABIP","BB%","K%","ISO","ADP"]
                 if p["type"] == "hitter"
-                else ["G","GS","IP","W","K","ERA","WHIP","SV","HLD","QS","BB","FIP"])
+                else ["G","GS","IP","W","K","ERA","WHIP","SV","HLD","QS","BB","FIP","ADP"])
         p["consensus"] = {}
         for cat in cats:
             vals = [s.get(cat) for s in p["systems"].values() if s.get(cat) is not None]
@@ -615,6 +616,16 @@ def add_scarcity(players):
     return scarcity
 
 
+def extract_adp(players):
+    """Pull consensus ADP out as a top-level field for easy sorting."""
+    for p in players:
+        adp_vals = [s.get("ADP") for s in p["systems"].values() if s.get("ADP") is not None]
+        if adp_vals:
+            p["adp"] = round(float(np.mean(adp_vals)), 1)
+        else:
+            p["adp"] = None
+    return players
+
 def flag_players(players):
     for p in players:
         p["flags"] = []
@@ -720,6 +731,8 @@ def main():
     players = add_zscores_var(players)
     players = add_tiers(players)
     players = add_percentiles(players)
+
+    players = extract_adp(players)
 
     print("\nStep 6: Fantasy value metrics (CWS + WFPTS)...")
     players = add_fantasy_value(players)

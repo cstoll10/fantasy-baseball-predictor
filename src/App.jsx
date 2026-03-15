@@ -914,7 +914,10 @@ export default function App() {
     })
   ,[players,typeFilter,teamFilter,posFilter,search,disFilter]);
 
-  const getSortVal = (p,key)=>p[key]??-999;
+  const getSortVal = (p,key)=>{
+    if (key==="adp") return p.adp!=null ? -p.adp : -99999;
+    return p[key]??-999;
+  };
   const sorted = useMemo(()=>[...filtered].sort((a,b)=>getSortVal(b,sortBy)-getSortVal(a,sortBy))
   ,[filtered,sortBy]);
 
@@ -1154,6 +1157,7 @@ export default function App() {
                 <option value="zScore">Sort: Z-Score</option>
                 <option value="CWS">Sort: CWS</option>
                 <option value="WFPTS">Sort: WFPTS</option>
+              <option value="adp">Sort: ADP</option>
               </select>
               {drafted.size>myKeepers.length&&(
                 <button onClick={()=>{
