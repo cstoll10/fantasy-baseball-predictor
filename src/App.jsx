@@ -861,12 +861,33 @@ function getBreakoutBust(player) {
   const peak=AGE_PEAKS[player.type]||27;
   const isYoung=age>0&&age<peak;
   const isOld=age>peak+3;
-  if (dis>0.18&&trend>0.01&&isYoung)
-    return {flag:"🚀 Breakout",color:"#057A55",bg:"#057A5512",desc:`Models see upside (${(dis*100).toFixed(0)}% variance) + improving trend`};
-  if (dis>0.18&&trend<-0.01&&isOld)
-    return {flag:"⚠️ Bust Risk",color:"#C41E3A",bg:"#C41E3A12",desc:`Models disagree + declining trend + age ${age}`};
-  if (dis>0.22&&isYoung)
-    return {flag:"💡 Buy Low",color:"#D97706",bg:"#D9770612",desc:`High variance on young player — upside if projections are right`};
+  const var_val=player.VAR||0;
+  const adp=player.adp||999;
+  const recentPA=recent[1]?.PA||recent[1]?.IP||0;
+  const prevPA=recent[0]?.PA||recent[0]?.IP||0;
+  const disPct=(dis*100).toFixed(0);
+
+  if (dis>0.12&&trend>0.01&&isYoung)
+    return {flag:"🚀 Breakout",color:"#057A55",bg:"#057A5512",
+      desc:"Young (age "+age+") + improving trend + "+disPct+"% model variance"};
+  if (dis>0.12&&trend<-0.01&&isOld)
+    return {flag:"⚠️ Bust Risk",color:"#C41E3A",bg:"#C41E3A12",
+      desc:"Age "+age+" + declining trend + "+disPct+"% model variance"};
+  if (adp>0&&adp<500&&var_val>=5&&adp>var_val*4)
+    return {flag:"😴 Sleeper",color:"#4338CA",bg:"#4338CA12",
+      desc:"ADP "+Math.round(adp)+" but VAR +"+var_val+" — undervalued by consensus"};
+  if (adp>0&&adp<200&&var_val<2&&adp<40)
+    return {flag:"📉 Fade",color:"#D97706",bg:"#D9770612",
+      desc:"ADP "+Math.round(adp)+" but VAR only "+var_val+" — consensus may be too high"};
+  if (dis>0.18&&isYoung)
+    return {flag:"💡 Buy Low",color:"#0891B2",bg:"#0891B212",
+      desc:"Young ("+age+") with high model variance — ceiling play"};
+  if (recentPA>0&&prevPA>0&&recentPA<prevPA*0.6&&var_val>=3)
+    return {flag:"🔄 Bounce Back",color:"#057A55",bg:"#057A5512",
+      desc:"Limited 2024 ("+Math.round(recentPA)+" PA/IP vs "+Math.round(prevPA)+") but projections remain strong"};
+  if (isOld&&trend<-0.015&&var_val<4)
+    return {flag:"📉 Decline Risk",color:"#C41E3A",bg:"#C41E3A12",
+      desc:"Age "+age+" + consistent decline trend"};
   return null;
 }
 
@@ -874,24 +895,26 @@ function getBreakoutBust(player) {
 function CategoryGapAnalysis({players, drafted, myDrafted, myKeepers}) {
   const myRoster=[...myKeepers,...myDrafted];
   const available=players.filter(p=>!drafted.has(p.id));
+  // Rate stats must be averaged, not summed
   const RATE_STATS = new Set(["OBP","AVG","SLG","ERA","WHIP","wOBA","FIP"]);
   const calcCat = (pool, cat) => {
     const vals = pool.map(p=>p.consensus?.[cat]).filter(v=>v!=null&&v>0);
-    if (vals.length === 0) return 0;
+    if (!vals.length) return 0;
     return RATE_STATS.has(cat) ? vals.reduce((s,v)=>s+v,0)/vals.length : vals.reduce((s,v)=>s+v,0);
   };
   const myHit={}, myPit={}, lgHit={}, lgPit={};
   const myHitters = myRoster.filter(p=>p.type==="hitter");
   const myPitchers = myRoster.filter(p=>p.type==="pitcher");
-  const lgHitters = [...players].filter(p=>p.type==="hitter").sort((a,b)=>b.VAR-a.VAR).slice(0,Math.round(players.filter(p=>p.type==="hitter").length/LEAGUE_SIZE));
-  const lgPitchers = [...players].filter(p=>p.type==="pitcher").sort((a,b)=>b.VAR-a.VAR).slice(0,Math.round(players.filter(p=>p.type==="pitcher").length/LEAGUE_SIZE));
+  // League average roster = top players / 12 teams
+  const lgHitters = [...players].filter(p=>p.type==="hitter").sort((a,b)=>b.VAR-a.VAR).slice(0, Math.round(players.filter(p=>p.type==="hitter").length/LEAGUE_SIZE));
+  const lgPitchers = [...players].filter(p=>p.type==="pitcher").sort((a,b)=>b.VAR-a.VAR).slice(0, Math.round(players.filter(p=>p.type==="pitcher").length/LEAGUE_SIZE));
   HIT_CATS.forEach(cat=>{
-    myHit[cat] = myHitters.length ? calcCat(myHitters,cat) : 0;
-    lgHit[cat] = calcCat(lgHitters,cat);
+    myHit[cat] = myHitters.length ? calcCat(myHitters, cat) : 0;
+    lgHit[cat] = calcCat(lgHitters, cat);
   });
   PIT_CATS.forEach(cat=>{
-    myPit[cat] = myPitchers.length ? calcCat(myPitchers,cat) : 0;
-    lgPit[cat] = calcCat(lgPitchers,cat);
+    myPit[cat] = myPitchers.length ? calcCat(myPitchers, cat) : 0;
+    lgPit[cat] = calcCat(lgPitchers, cat);
   });
   const hitGaps=HIT_CATS.map(cat=>{
     const lb=LOWER_BETTER.has(cat), mine=myHit[cat], avg=lgHit[cat];
@@ -984,50 +1007,69 @@ function CategoryGapAnalysis({players, drafted, myDrafted, myKeepers}) {
 
 // ── Breakout/Bust Board ───────────────────────────────────────────────────────
 function BreakoutBustBoard({players, drafted}) {
-  const available=players.filter(p=>!drafted.has(p.id)&&p.VAR>-2&&p.adp!=null);
-  const flagged=available.map(p=>({...p,_bb:getBreakoutBust(p)})).filter(p=>p._bb!=null)
+  const available=players.filter(p=>!drafted.has(p.id));
+  // Filter: must have ADP value OR VAR > -2
+  const qualified=available.filter(p=>p.adp!=null||p.VAR>-2);
+  const flagged=qualified.map(p=>({...p,_bb:getBreakoutBust(p)})).filter(p=>p._bb!=null)
     .sort((a,b)=>(b.disagreement_score||0)-(a.disagreement_score||0));
-  // Filter: must have ADP or VAR > -2
-  const qualified_flagged = flagged.filter(p=>p.VAR>-2);
-  const breakouts=qualified_flagged.filter(p=>!p._bb.flag.includes("Bust"));
-  const busts=qualified_flagged.filter(p=>p._bb.flag.includes("Bust"));
+  const breakouts=flagged.filter(p=>!p._bb.flag.includes("Bust"));
+  const busts=flagged.filter(p=>p._bb.flag.includes("Bust"));
+
   const Card=({p})=>{
     const bb=p._bb, pc=posColor(p.pos||"?"), vc=p.VAR>=8?"#057A55":p.VAR>=2?"#1B3FA0":"#6B7280";
     const cats=p.type==="hitter"?HIT_CATS:PIT_CATS;
     const highDis=cats.filter(c=>(p.disagreement?.[c]||0)>0.2);
     return (
-      <div style={{background:"#FFFFFF",border:`1px solid ${bb.color}30`,borderRadius:10,
-        padding:14,borderLeft:`4px solid ${bb.color}`,marginBottom:10}}>
-        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
-          <div style={{width:26,height:26,borderRadius:4,background:pc+"22",border:`1px solid ${pc}60`,
-            display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:700,color:pc,flexShrink:0}}>
-            {(p.pos||"?").slice(0,3)}
-          </div>
-          <div style={{flex:1,minWidth:0}}>
-            <div style={{fontSize:13,fontWeight:700,color:"#1A1A2E",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</div>
-            <div style={{fontSize:10,color:"#6B7280"}}>{p.team}</div>
-          </div>
-          <div style={{textAlign:"right"}}>
-            <div style={{fontSize:12,fontWeight:700,color:vc,fontFamily:"'DM Mono',monospace"}}>{p.VAR>0?"+":""}{p.VAR}</div>
-            <div style={{fontSize:9,color:"#6B7280"}}>VAR</div>
-          </div>
+      <div style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",
+        background:"#FFFFFF",border:`1px solid ${bb.color}25`,borderRadius:8,
+        borderLeft:`3px solid ${bb.color}`,marginBottom:6}}>
+        <div style={{width:26,height:26,borderRadius:4,background:pc+"22",border:`1px solid ${pc}60`,
+          display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:700,color:pc,flexShrink:0}}>
+          {(p.pos||"?").slice(0,3)}
         </div>
-        <div style={{fontSize:11,fontWeight:700,color:bb.color,marginBottom:3}}>{bb.flag}</div>
-        <div style={{fontSize:10,color:"#6B7280",marginBottom:4}}>{bb.desc}</div>
-        {highDis.length>0&&<div style={{fontSize:9,color:"#D97706",fontWeight:600}}>Disputed: {highDis.join(", ")}</div>}
-        {p.adp&&<div style={{fontSize:9,color:"#6B7280",marginTop:3}}>ADP: {Math.round(p.adp)}</div>}
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
+            <span style={{fontSize:12,fontWeight:700,color:"#1A1A2E",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</span>
+            <span style={{fontSize:9,fontWeight:700,color:bb.color,background:bb.bg,borderRadius:3,padding:"1px 5px",flexShrink:0}}>{bb.flag}</span>
+          </div>
+          <div style={{fontSize:10,color:"#6B7280"}}>{p.team} · {bb.desc}</div>
+          {highDis.length>0&&<div style={{fontSize:9,color:"#D97706",marginTop:1}}>Disputed: {highDis.join(", ")}</div>}
+        </div>
+        <div style={{textAlign:"right",flexShrink:0}}>
+          <div style={{fontSize:12,fontWeight:700,color:vc,fontFamily:"'DM Mono',monospace"}}>{p.VAR>0?"+":""}{p.VAR}</div>
+          {p.adp&&<div style={{fontSize:9,color:"#6B7280",fontFamily:"'DM Mono',monospace"}}>#{Math.round(p.adp)}</div>}
+        </div>
       </div>
     );
   };
+
   return (
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
-      <div>
-        <div style={{fontSize:12,fontWeight:700,color:"#057A55",textTransform:"uppercase",letterSpacing:"0.6px",marginBottom:12}}>🚀 Breakout / Buy Low ({breakouts.length})</div>
-        <div style={{maxHeight:"calc(100vh - 260px)",overflowY:"auto"}}>{breakouts.length===0?<div style={{color:"#6B7280",padding:12}}>None detected</div>:breakouts.map(p=><Card key={p.id} p={p}/>)}</div>
+      <div style={{display:"flex",flexDirection:"column",gap:0}}>
+        <div style={{fontSize:12,fontWeight:700,color:"#057A55",textTransform:"uppercase",
+          letterSpacing:"0.6px",marginBottom:12,position:"sticky",top:0,background:"#F5F3EE",
+          padding:"4px 0",zIndex:1}}>
+          🚀 Breakout / Buy Low ({breakouts.length})
+        </div>
+        <div style={{overflowY:"auto",maxHeight:"calc(100vh - 220px)"}}>
+          {breakouts.length===0
+            ?<div style={{color:"#6B7280",fontSize:12,padding:12}}>None detected with current filters</div>
+            :breakouts.map(p=><Card key={p.id} p={p}/>)
+          }
+        </div>
       </div>
-      <div>
-        <div style={{fontSize:12,fontWeight:700,color:"#C41E3A",textTransform:"uppercase",letterSpacing:"0.6px",marginBottom:12}}>⚠️ Bust Risks ({busts.length})</div>
-        <div style={{maxHeight:"calc(100vh - 260px)",overflowY:"auto"}}>{busts.length===0?<div style={{color:"#6B7280",padding:12}}>None detected</div>:busts.map(p=><Card key={p.id} p={p}/>)}</div>
+      <div style={{display:"flex",flexDirection:"column",gap:0}}>
+        <div style={{fontSize:12,fontWeight:700,color:"#C41E3A",textTransform:"uppercase",
+          letterSpacing:"0.6px",marginBottom:12,position:"sticky",top:0,background:"#F5F3EE",
+          padding:"4px 0",zIndex:1}}>
+          ⚠️ Bust Risks ({busts.length})
+        </div>
+        <div style={{overflowY:"auto",maxHeight:"calc(100vh - 220px)"}}>
+          {busts.length===0
+            ?<div style={{color:"#6B7280",fontSize:12,padding:12}}>None detected with current filters</div>
+            :busts.map(p=><Card key={p.id} p={p}/>)
+          }
+        </div>
       </div>
     </div>
   );
@@ -1242,7 +1284,6 @@ export default function App() {
   const [draftLog,setDraftLog]   = useState([]);           // [{pick, player}] — my picks only
   const [currentPick,setCurrentPick] = useState(1);
   const [draftPosFilter,setDraftPosFilter] = useState("All");
-  const [analysisTab,setAnalysisTab] = useState("targets");
   const searchRef = useRef(null);
 
   useEffect(()=>{
