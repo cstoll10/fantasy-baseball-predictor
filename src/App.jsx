@@ -1012,6 +1012,8 @@ function BreakoutBustBoard({players, drafted}) {
   const qualified=available.filter(p=>p.adp!=null||p.VAR>-2);
   const flagged=qualified.map(p=>({...p,_bb:getBreakoutBust(p)})).filter(p=>p._bb!=null)
     .sort((a,b)=>(b.disagreement_score||0)-(a.disagreement_score||0));
+  const breakouts_sorted=breakouts.sort((a,b)=>b.VAR-a.VAR);
+  const busts_sorted=busts.sort((a,b)=>a.VAR-b.VAR);
   const breakouts=flagged.filter(p=>!p._bb.flag.includes("Bust"));
   const busts=flagged.filter(p=>p._bb.flag.includes("Bust"));
 
@@ -1054,7 +1056,7 @@ function BreakoutBustBoard({players, drafted}) {
         <div style={{overflowY:"auto",maxHeight:"calc(100vh - 220px)"}}>
           {breakouts.length===0
             ?<div style={{color:"#6B7280",fontSize:12,padding:12}}>None detected with current filters</div>
-            :breakouts.map(p=><Card key={p.id} p={p}/>)
+            :breakouts_sorted.map(p=><Card key={p.id} p={p}/>)
           }
         </div>
       </div>
@@ -1067,7 +1069,7 @@ function BreakoutBustBoard({players, drafted}) {
         <div style={{overflowY:"auto",maxHeight:"calc(100vh - 220px)"}}>
           {busts.length===0
             ?<div style={{color:"#6B7280",fontSize:12,padding:12}}>None detected with current filters</div>
-            :busts.map(p=><Card key={p.id} p={p}/>)
+            :busts_sorted.map(p=><Card key={p.id} p={p}/>)
           }
         </div>
       </div>
@@ -1284,7 +1286,7 @@ export default function App() {
   const [draftLog,setDraftLog]   = useState([]);           // [{pick, player}] — my picks only
   const [currentPick,setCurrentPick] = useState(1);
   const [draftPosFilter,setDraftPosFilter] = useState("All");
-  const [analysisTab,setAnalysisTab] = useState("targets");
+  const [analysisTab,setAnalysisTab]       = useState("targets");
   const searchRef = useRef(null);
 
   useEffect(()=>{
