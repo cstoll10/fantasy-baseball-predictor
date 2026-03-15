@@ -1230,6 +1230,7 @@ export default function App() {
   const [draftLog,setDraftLog]   = useState([]);           // [{pick, player}] — my picks only
   const [currentPick,setCurrentPick] = useState(1);
   const [draftPosFilter,setDraftPosFilter] = useState("All");
+  const [analysisTab,setAnalysisTab] = useState("targets");
   const searchRef = useRef(null);
 
   useEffect(()=>{
