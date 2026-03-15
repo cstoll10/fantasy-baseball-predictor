@@ -1098,7 +1098,7 @@ export default function App() {
               <span style={{fontSize:17,fontWeight:700,color:"#1A1A2E",letterSpacing:"-0.4px"}}>⚾ Fantasy Baseball 2026</span>
               <span style={{fontSize:10,color:"#1A1A2E",fontFamily:"'DM Mono',monospace"}}>
                 {players.length} players
-                {tab==="draft"&&` · ${drafted.size} drafted · pick ${currentPick}`}
+                {(tab==="draft"||tab==="analysis")&&` · ${drafted.size} drafted · pick ${currentPick}`}
                 {data?.generated&&` · Updated ${new Date(data.generated).toLocaleDateString()}`}
               </span>
             </div>
@@ -1106,6 +1106,7 @@ export default function App() {
           <div style={{display:"flex",gap:1}}>
             {TAB("players","📊 Players")}
             {TAB("draft","🎯 Draft Board")}
+            {TAB("analysis","🧠 Draft Analysis")}
           </div>
         </div>
       </div>
@@ -1118,6 +1119,62 @@ export default function App() {
             <div style={{marginBottom:12}}><Controls/></div>
             <WithPanel list={sorted}><PlayerList list={sorted}/></WithPanel>
           </>
+        )}
+
+        {/* ── DRAFT ANALYSIS TAB ── */}
+        {tab==="analysis"&&(
+          <div>
+            {/* Sub-tabs */}
+            <div style={{display:"flex",gap:6,marginBottom:20,borderBottom:"1px solid #E2DFD8",paddingBottom:0}}>
+              {[
+                ["targets","🎯 Who to Target"],
+                ["breakout","🚀 Breakout/Bust"],
+                ["runs","📈 Run Detector"],
+                ["ages","📅 Age Curves"],
+                ["picks","🔮 Pick Predictor"],
+              ].map(([id,label])=>(
+                <button key={id} onClick={()=>setAnalysisTab(id)}
+                  style={{padding:"8px 16px",border:"none",cursor:"pointer",fontSize:12,fontWeight:600,
+                    borderRadius:"6px 6px 0 0",
+                    background:analysisTab===id?"#FFFFFF":"transparent",
+                    color:analysisTab===id?"#1A1A2E":"#6B7280",
+                    borderBottom:analysisTab===id?"2px solid #1B3FA0":"2px solid transparent",
+                    transition:"all 0.12s"}}>
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {analysisTab==="targets"&&(
+              <CategoryGapAnalysis
+                players={players}
+                drafted={drafted}
+                myDrafted={draftLog.map(d=>d.player)}
+                myKeepers={myKeepers}
+                scarcity={scarcity}
+              />
+            )}
+            {analysisTab==="breakout"&&(
+              <BreakoutBustBoard players={players} drafted={drafted}/>
+            )}
+            {analysisTab==="runs"&&(
+              <RunDetector
+                draftLog={[...myKeepers.map(k=>({pick:"K",player:k})),...draftLog]}
+                currentPick={currentPick}
+              />
+            )}
+            {analysisTab==="ages"&&(
+              <AgeCurveBoard players={players} drafted={drafted}/>
+            )}
+            {analysisTab==="picks"&&(
+              <PickPredictor
+                players={players}
+                drafted={drafted}
+                myPicks={myPicks}
+                currentPick={currentPick}
+              />
+            )}
+          </div>
         )}
 
         {/* ── DRAFT BOARD TAB ── */}
@@ -1190,3 +1247,4 @@ export default function App() {
     </div>
   );
 }
+// placeholder
