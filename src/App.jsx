@@ -874,14 +874,24 @@ function getBreakoutBust(player) {
 function CategoryGapAnalysis({players, drafted, myDrafted, myKeepers}) {
   const myRoster=[...myKeepers,...myDrafted];
   const available=players.filter(p=>!drafted.has(p.id));
+  const RATE_STATS = new Set(["OBP","AVG","SLG","ERA","WHIP","wOBA","FIP"]);
+  const calcCat = (pool, cat) => {
+    const vals = pool.map(p=>p.consensus?.[cat]).filter(v=>v!=null&&v>0);
+    if (vals.length === 0) return 0;
+    return RATE_STATS.has(cat) ? vals.reduce((s,v)=>s+v,0)/vals.length : vals.reduce((s,v)=>s+v,0);
+  };
   const myHit={}, myPit={}, lgHit={}, lgPit={};
+  const myHitters = myRoster.filter(p=>p.type==="hitter");
+  const myPitchers = myRoster.filter(p=>p.type==="pitcher");
+  const lgHitters = [...players].filter(p=>p.type==="hitter").sort((a,b)=>b.VAR-a.VAR).slice(0,Math.round(players.filter(p=>p.type==="hitter").length/LEAGUE_SIZE));
+  const lgPitchers = [...players].filter(p=>p.type==="pitcher").sort((a,b)=>b.VAR-a.VAR).slice(0,Math.round(players.filter(p=>p.type==="pitcher").length/LEAGUE_SIZE));
   HIT_CATS.forEach(cat=>{
-    myHit[cat]=myRoster.filter(p=>p.type==="hitter").reduce((s,p)=>s+(p.consensus?.[cat]||0),0);
-    lgHit[cat]=players.filter(p=>p.type==="hitter").reduce((s,p)=>s+(p.consensus?.[cat]||0),0)/LEAGUE_SIZE;
+    myHit[cat] = myHitters.length ? calcCat(myHitters,cat) : 0;
+    lgHit[cat] = calcCat(lgHitters,cat);
   });
   PIT_CATS.forEach(cat=>{
-    myPit[cat]=myRoster.filter(p=>p.type==="pitcher").reduce((s,p)=>s+(p.consensus?.[cat]||0),0);
-    lgPit[cat]=players.filter(p=>p.type==="pitcher").reduce((s,p)=>s+(p.consensus?.[cat]||0),0)/LEAGUE_SIZE;
+    myPit[cat] = myPitchers.length ? calcCat(myPitchers,cat) : 0;
+    lgPit[cat] = calcCat(lgPitchers,cat);
   });
   const hitGaps=HIT_CATS.map(cat=>{
     const lb=LOWER_BETTER.has(cat), mine=myHit[cat], avg=lgHit[cat];
