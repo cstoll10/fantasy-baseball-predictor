@@ -984,7 +984,7 @@ function CategoryGapAnalysis({players, drafted, myDrafted, myKeepers}) {
 
 // ── Breakout/Bust Board ───────────────────────────────────────────────────────
 function BreakoutBustBoard({players, drafted}) {
-  const available=players.filter(p=>!drafted.has(p.id));
+  const available=players.filter(p=>!drafted.has(p.id)&&(p.adp!=null||p.VAR>-2));
   const flagged=available.map(p=>({...p,_bb:getBreakoutBust(p)})).filter(p=>p._bb!=null)
     .sort((a,b)=>(b.disagreement_score||0)-(a.disagreement_score||0));
   // Filter: must have ADP or VAR > -2
