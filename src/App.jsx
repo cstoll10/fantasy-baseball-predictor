@@ -987,8 +987,10 @@ function BreakoutBustBoard({players, drafted}) {
   const available=players.filter(p=>!drafted.has(p.id));
   const flagged=available.map(p=>({...p,_bb:getBreakoutBust(p)})).filter(p=>p._bb!=null)
     .sort((a,b)=>(b.disagreement_score||0)-(a.disagreement_score||0));
-  const breakouts=flagged.filter(p=>!p._bb.flag.includes("Bust"));
-  const busts=flagged.filter(p=>p._bb.flag.includes("Bust"));
+  // Filter: must have ADP or VAR > -2
+  const qualified_flagged = flagged.filter(p=>p.adp!=null||p.VAR>-2);
+  const breakouts=qualified_flagged.filter(p=>!p._bb.flag.includes("Bust"));
+  const busts=qualified_flagged.filter(p=>p._bb.flag.includes("Bust"));
   const Card=({p})=>{
     const bb=p._bb, pc=posColor(p.pos||"?"), vc=p.VAR>=8?"#057A55":p.VAR>=2?"#1B3FA0":"#6B7280";
     const cats=p.type==="hitter"?HIT_CATS:PIT_CATS;
@@ -1021,11 +1023,11 @@ function BreakoutBustBoard({players, drafted}) {
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
       <div>
         <div style={{fontSize:12,fontWeight:700,color:"#057A55",textTransform:"uppercase",letterSpacing:"0.6px",marginBottom:12}}>🚀 Breakout / Buy Low ({breakouts.length})</div>
-        {breakouts.length===0?<div style={{color:"#6B7280"}}>None detected</div>:breakouts.slice(0,8).map(p=><Card key={p.id} p={p}/>)}
+        <div style={{maxHeight:"calc(100vh - 260px)",overflowY:"auto"}}>{breakouts.length===0?<div style={{color:"#6B7280",padding:12}}>None detected</div>:breakouts.map(p=><Card key={p.id} p={p}/>)}</div>
       </div>
       <div>
         <div style={{fontSize:12,fontWeight:700,color:"#C41E3A",textTransform:"uppercase",letterSpacing:"0.6px",marginBottom:12}}>⚠️ Bust Risks ({busts.length})</div>
-        {busts.length===0?<div style={{color:"#6B7280"}}>None detected</div>:busts.slice(0,8).map(p=><Card key={p.id} p={p}/>)}
+        <div style={{maxHeight:"calc(100vh - 260px)",overflowY:"auto"}}>{busts.length===0?<div style={{color:"#6B7280",padding:12}}>None detected</div>:busts.map(p=><Card key={p.id} p={p}/>)}</div>
       </div>
     </div>
   );
