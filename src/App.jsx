@@ -469,10 +469,10 @@ function PlayerPanel({player,allPlayers,per600,showPct,onClose,onNavigate,skillP
           return (
             <div key={lbl} style={{background:c+"10",border:`1px solid ${c}25`,borderRadius:8,padding:"8px 10px",textAlign:"center"}}>
               <div style={{fontSize:8,color:"#9A9AAE",marginBottom:1,letterSpacing:"0.4px"}}>{lbl}</div>
-              <div style={{fontSize:18,fontWeight:700,color:c,fontFamily:"'DM Mono',monospace",lineHeight:1.1}}>
+              <div style={{fontSize:18,fontWeight:700,color:"#1A1A2E",fontFamily:"'DM Mono',monospace",lineHeight:1.1}}>
                 {val!=null?(val>0&&lbl==="VAR"?"+":"")+val:"—"}
               </div>
-              {ord&&<div style={{fontSize:9,color:c,fontFamily:"'DM Mono',monospace",marginTop:2,opacity:0.8}}>{ord}</div>}
+              {ord&&<div style={{fontSize:9,color:c,fontFamily:"'DM Mono',monospace",marginTop:2,fontWeight:600}}>{ord}</div>}
               <div style={{fontSize:8,color:"#AAAABC",marginTop:1}}>{sub}</div>
             </div>
           );
@@ -1057,7 +1057,7 @@ export default function App() {
       <div style={{width:1,height:18,background:"#B8B4AA",flexShrink:0}}/>
       {Toggle(per600,per600?"✓ /600 PA":"/600 PA",()=>setPer600(v=>!v))}
       {Toggle(showPct,showPct?"✓ Percentiles":"Percentiles",()=>setShowPct(v=>!v),"#4338CA")}
-      <select value={sortBy} onChange={e=>setSortBy(e.target.value)} style={{...sel,color:"#4338CA",borderColor:"#4338CA50"}}>
+      <select value={sortBy} onChange={e=>setSortBy(e.target.value)} style={{...sel,color:"#1A1A2E",borderColor:"#1B3FA050"}}>
         <option value="VAR">Sort: VAR</option>
         <option value="zScore">Sort: Z-Score</option>
         <option value="CWS">Sort: CWS</option>
@@ -1140,7 +1140,7 @@ export default function App() {
                     pos==="All"?"#1B3FA0":"#4338CA")
                 )}
               </div>
-              <select value={sortBy} onChange={e=>setSortBy(e.target.value)} style={{...sel,color:"#4338CA",borderColor:"#4338CA50"}}>
+              <select value={sortBy} onChange={e=>setSortBy(e.target.value)} style={{...sel,color:"#1A1A2E",borderColor:"#1B3FA050"}}>
                 <option value="VAR">Sort: VAR</option>
                 <option value="zScore">Sort: Z-Score</option>
                 <option value="CWS">Sort: CWS</option>
