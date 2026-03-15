@@ -906,7 +906,13 @@ export default function App() {
     })
   ,[players,typeFilter,teamFilter,posFilter,search,disFilter]);
 
-  const getSortVal = (p,key)=>p[key]??-999;
+  const getSortVal = (p,key)=>{
+    if (key==="adp_rank") {
+      // ADP: lower rank = better, nulls sort to end
+      return p.adp_rank!=null ? -p.adp_rank : -99999;
+    }
+    return p[key]??-999;
+  };
   const sorted = useMemo(()=>[...filtered].sort((a,b)=>getSortVal(b,sortBy)-getSortVal(a,sortBy))
   ,[filtered,sortBy]);
 

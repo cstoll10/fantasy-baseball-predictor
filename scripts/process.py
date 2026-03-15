@@ -655,6 +655,52 @@ def load_historical():
             print(f"  x {fname}: {e}")
     return history
 
+
+def load_adp(players):
+    """Load FantasyPros ADP rankings and attach to players by name match."""
+    adp_path = ROOT / "data" / "adp.csv"
+    if not adp_path.exists():
+        print("  - adp.csv not found, skipping")
+        return players
+
+    try:
+        df = pd.read_csv(adp_path)
+        # Build name → rank map (first occurrence wins — handles Ohtani duplicate)
+        adp_map = {}
+        for _, row in df.iterrows():
+            name = str(row.get("Player","")).strip()
+            # Strip suffixes like "(Batter)" or "(Pitcher)"
+            name = re.sub(r"\s*\(.*?\)\s*$", "", name).strip()
+            rank = row.get("Rank","")
+            avg  = row.get("AVG","")
+            try:
+                rank = int(float(str(rank))) if str(rank).strip() else None
+                avg  = round(float(str(avg)), 1) if str(avg).strip() else None
+            except:
+                rank = None
+                avg  = None
+            key = normalize_name(name)
+            if key and key not in adp_map and rank is not None:
+                adp_map[key] = {"adp_rank": rank, "adp_avg": avg}
+
+        matched = 0
+        for p in players:
+            key = normalize_name(p["name"])
+            if key in adp_map:
+                p["adp_rank"] = adp_map[key]["adp_rank"]
+                p["adp_avg"]  = adp_map[key]["adp_avg"]
+                matched += 1
+            else:
+                p["adp_rank"] = None
+                p["adp_avg"]  = None
+        print(f"  Matched ADP for {matched} / {len(players)} players")
+    except Exception as e:
+        print(f"  x ADP load failed: {e}")
+        for p in players:
+            p["adp_rank"] = None
+            p["adp_avg"]  = None
+    return players
+
 def main():
     print("\nFantasy Baseball 2026 - Processing Pipeline\n")
     print("Step 1: Loading projection CSVs...")
