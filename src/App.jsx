@@ -833,6 +833,382 @@ function ErrorScreen({msg}) {
   );
 }
 
+// ── Age curve helpers ─────────────────────────────────────────────────────────
+const AGE_PEAKS = { hitter:27, pitcher:28 };
+function getAgeCurveStage(age, type) {
+  const peak = AGE_PEAKS[type]||27;
+  if (age < peak-3) return {label:"Rising",   color:"#059669", desc:"Pre-peak, likely improving"};
+  if (age <= peak+1) return {label:"Prime",    color:"#1B3FA0", desc:"At or near peak value"};
+  if (age <= peak+4) return {label:"Aging",    color:"#D97706", desc:"Post-peak, some decline expected"};
+  return              {label:"Declining", color:"#C41E3A", desc:"Significant decline risk"};
+}
+
+// ── Breakout/Bust detection ───────────────────────────────────────────────────
+function getBreakoutBust(player) {
+  const dis = player.disagreement_score??0;
+  const history = player.history||[];
+  const sorted = [...history].sort((a,b)=>(a.season||0)-(b.season||0));
+  const recent = sorted.slice(-2);
+  let trend = 0;
+  if (player.type==="hitter"&&recent.length>=2) {
+    const w1=recent[0]?.wOBA, w2=recent[1]?.wOBA;
+    if (w1&&w2) trend=w2-w1;
+  } else if (player.type==="pitcher"&&recent.length>=2) {
+    const e1=recent[0]?.ERA, e2=recent[1]?.ERA;
+    if (e1&&e2) trend=e1-e2;
+  }
+  const age=player.history?.sort((a,b)=>(b.season||0)-(a.season||0))[0]?.Age||0;
+  const peak=AGE_PEAKS[player.type]||27;
+  const isYoung=age>0&&age<peak;
+  const isOld=age>peak+3;
+  if (dis>0.18&&trend>0.01&&isYoung)
+    return {flag:"🚀 Breakout",color:"#057A55",bg:"#057A5512",desc:`Models see upside (${(dis*100).toFixed(0)}% variance) + improving trend`};
+  if (dis>0.18&&trend<-0.01&&isOld)
+    return {flag:"⚠️ Bust Risk",color:"#C41E3A",bg:"#C41E3A12",desc:`Models disagree + declining trend + age ${age}`};
+  if (dis>0.22&&isYoung)
+    return {flag:"💡 Buy Low",color:"#D97706",bg:"#D9770612",desc:`High variance on young player — upside if projections are right`};
+  return null;
+}
+
+// ── Category Gap Analysis ─────────────────────────────────────────────────────
+function CategoryGapAnalysis({players, drafted, myDrafted, myKeepers}) {
+  const myRoster=[...myKeepers,...myDrafted];
+  const available=players.filter(p=>!drafted.has(p.id));
+  const myHit={}, myPit={}, lgHit={}, lgPit={};
+  HIT_CATS.forEach(cat=>{
+    myHit[cat]=myRoster.filter(p=>p.type==="hitter").reduce((s,p)=>s+(p.consensus?.[cat]||0),0);
+    lgHit[cat]=players.filter(p=>p.type==="hitter").reduce((s,p)=>s+(p.consensus?.[cat]||0),0)/LEAGUE_SIZE;
+  });
+  PIT_CATS.forEach(cat=>{
+    myPit[cat]=myRoster.filter(p=>p.type==="pitcher").reduce((s,p)=>s+(p.consensus?.[cat]||0),0);
+    lgPit[cat]=players.filter(p=>p.type==="pitcher").reduce((s,p)=>s+(p.consensus?.[cat]||0),0)/LEAGUE_SIZE;
+  });
+  const hitGaps=HIT_CATS.map(cat=>{
+    const lb=LOWER_BETTER.has(cat), mine=myHit[cat], avg=lgHit[cat];
+    const pct=avg>0?(mine-avg)/avg:0;
+    return {cat,mine,avg,pct,winning:lb?pct<-0.05:pct>0.05,losing:lb?pct>0.05:pct<-0.05};
+  });
+  const pitGaps=PIT_CATS.map(cat=>{
+    const lb=LOWER_BETTER.has(cat), mine=myPit[cat], avg=lgPit[cat];
+    const pct=avg>0?(mine-avg)/avg:0;
+    return {cat,mine,avg,pct,winning:lb?pct<-0.05:pct>0.05,losing:lb?pct>0.05:pct<-0.05};
+  });
+  const losingHitCats=new Set(hitGaps.filter(g=>g.losing).map(g=>g.cat));
+  const losingPitCats=new Set(pitGaps.filter(g=>g.losing).map(g=>g.cat));
+  const targets=[...available].map(p=>({
+    ...p,_score:[...(p.type==="hitter"?losingHitCats:losingPitCats)]
+      .reduce((s,cat)=>{const lb=LOWER_BETTER.has(cat);const pct=p.percentiles?.[cat];return pct==null?s:s+(lb?1-pct:pct);},0)
+  })).sort((a,b)=>b._score-a._score).slice(0,6);
+
+  const CatBar=({cat,mine,avg,pct,winning,losing})=>{
+    const color=winning?"#057A55":losing?"#C41E3A":"#D97706";
+    const isRate=["OBP","ERA","WHIP"].includes(cat);
+    const barW=Math.min(Math.max(50+(pct*150),2),98);
+    return (
+      <div style={{marginBottom:8}}>
+        <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
+          <span style={{fontSize:11,fontWeight:700,color:"#1A1A2E"}}>{cat}</span>
+          <div style={{display:"flex",gap:12,alignItems:"center"}}>
+            <span style={{fontSize:10,color:"#6B7280"}}>Avg: {isRate?Number(avg).toFixed(3):Math.round(avg)}</span>
+            <span style={{fontSize:11,fontWeight:700,color,fontFamily:"'DM Mono',monospace"}}>{isRate?Number(mine).toFixed(3):Math.round(mine)}</span>
+            <span style={{fontSize:10,color,fontWeight:600}}>{winning?"✓ Win":losing?"✗ Lose":"~ Close"}</span>
+          </div>
+        </div>
+        <div style={{height:4,background:"#E2DFD8",borderRadius:2,overflow:"hidden"}}>
+          <div style={{height:"100%",width:`${barW}%`,background:color,borderRadius:2}}/>
+        </div>
+      </div>
+    );
+  };
+
+  if (myRoster.length===0) return (
+    <div style={{textAlign:"center",padding:60,color:"#6B7280"}}>
+      <div style={{fontSize:32,marginBottom:8}}>📋</div>
+      <div style={{fontSize:15,fontWeight:600,color:"#1A1A2E"}}>Draft some players first</div>
+      <div style={{fontSize:13,marginTop:4}}>Category analysis appears once you have a roster</div>
+    </div>
+  );
+
+  return (
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+      <div style={{background:"#FFFFFF",border:"1px solid #E2DFD8",borderRadius:10,padding:16}}>
+        <div style={{fontSize:11,fontWeight:700,color:"#1A1A2E",textTransform:"uppercase",letterSpacing:"0.6px",marginBottom:14}}>⚾ Hitting</div>
+        {hitGaps.map(g=><CatBar key={g.cat} {...g}/>)}
+      </div>
+      <div style={{background:"#FFFFFF",border:"1px solid #E2DFD8",borderRadius:10,padding:16}}>
+        <div style={{fontSize:11,fontWeight:700,color:"#1A1A2E",textTransform:"uppercase",letterSpacing:"0.6px",marginBottom:14}}>⚾ Pitching</div>
+        {pitGaps.map(g=><CatBar key={g.cat} {...g}/>)}
+      </div>
+      <div style={{gridColumn:"1/-1",background:"#FFFFFF",border:"1px solid #E2DFD8",borderRadius:10,padding:16}}>
+        <div style={{fontSize:11,fontWeight:700,color:"#1A1A2E",textTransform:"uppercase",letterSpacing:"0.6px",marginBottom:12}}>🎯 Target Next</div>
+        {losingHitCats.size===0&&losingPitCats.size===0
+          ?<div style={{color:"#057A55",fontSize:13,fontWeight:600}}>✓ Winning or close in all categories!</div>
+          :<div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
+            {targets.map(p=>{
+              const bb=getBreakoutBust(p), pc=posColor(p.pos||"?"), vc=p.VAR>=8?"#057A55":p.VAR>=2?"#1B3FA0":"#6B7280";
+              return (
+                <div key={p.id} style={{background:"#F9F8F5",border:"1px solid #E2DFD8",borderRadius:8,padding:12}}>
+                  <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
+                    <div style={{width:22,height:22,borderRadius:4,background:pc+"22",border:`1px solid ${pc}60`,
+                      display:"flex",alignItems:"center",justifyContent:"center",fontSize:8,fontWeight:700,color:pc,flexShrink:0}}>
+                      {(p.pos||"?").slice(0,3)}
+                    </div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:12,fontWeight:700,color:"#1A1A2E",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</div>
+                      <div style={{fontSize:10,color:"#6B7280"}}>{p.team}</div>
+                    </div>
+                    <div style={{fontSize:12,fontWeight:700,color:vc,fontFamily:"'DM Mono',monospace"}}>{p.VAR>0?"+":""}{p.VAR}</div>
+                  </div>
+                  {bb&&<div style={{fontSize:9,color:bb.color,background:bb.bg,borderRadius:4,padding:"2px 6px",marginBottom:4,fontWeight:600}}>{bb.flag}</div>}
+                  <div style={{fontSize:9,color:"#6B7280"}}>Helps: {[...(p.type==="hitter"?losingHitCats:losingPitCats)].join(", ")}</div>
+                  {p.adp&&<div style={{fontSize:9,color:"#6B7280",marginTop:2}}>ADP: {Math.round(p.adp)}</div>}
+                </div>
+              );
+            })}
+          </div>
+        }
+      </div>
+    </div>
+  );
+}
+
+// ── Breakout/Bust Board ───────────────────────────────────────────────────────
+function BreakoutBustBoard({players, drafted}) {
+  const available=players.filter(p=>!drafted.has(p.id));
+  const flagged=available.map(p=>({...p,_bb:getBreakoutBust(p)})).filter(p=>p._bb!=null)
+    .sort((a,b)=>(b.disagreement_score||0)-(a.disagreement_score||0));
+  const breakouts=flagged.filter(p=>!p._bb.flag.includes("Bust"));
+  const busts=flagged.filter(p=>p._bb.flag.includes("Bust"));
+  const Card=({p})=>{
+    const bb=p._bb, pc=posColor(p.pos||"?"), vc=p.VAR>=8?"#057A55":p.VAR>=2?"#1B3FA0":"#6B7280";
+    const cats=p.type==="hitter"?HIT_CATS:PIT_CATS;
+    const highDis=cats.filter(c=>(p.disagreement?.[c]||0)>0.2);
+    return (
+      <div style={{background:"#FFFFFF",border:`1px solid ${bb.color}30`,borderRadius:10,
+        padding:14,borderLeft:`4px solid ${bb.color}`,marginBottom:10}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+          <div style={{width:26,height:26,borderRadius:4,background:pc+"22",border:`1px solid ${pc}60`,
+            display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:700,color:pc,flexShrink:0}}>
+            {(p.pos||"?").slice(0,3)}
+          </div>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:13,fontWeight:700,color:"#1A1A2E",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</div>
+            <div style={{fontSize:10,color:"#6B7280"}}>{p.team}</div>
+          </div>
+          <div style={{textAlign:"right"}}>
+            <div style={{fontSize:12,fontWeight:700,color:vc,fontFamily:"'DM Mono',monospace"}}>{p.VAR>0?"+":""}{p.VAR}</div>
+            <div style={{fontSize:9,color:"#6B7280"}}>VAR</div>
+          </div>
+        </div>
+        <div style={{fontSize:11,fontWeight:700,color:bb.color,marginBottom:3}}>{bb.flag}</div>
+        <div style={{fontSize:10,color:"#6B7280",marginBottom:4}}>{bb.desc}</div>
+        {highDis.length>0&&<div style={{fontSize:9,color:"#D97706",fontWeight:600}}>Disputed: {highDis.join(", ")}</div>}
+        {p.adp&&<div style={{fontSize:9,color:"#6B7280",marginTop:3}}>ADP: {Math.round(p.adp)}</div>}
+      </div>
+    );
+  };
+  return (
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+      <div>
+        <div style={{fontSize:12,fontWeight:700,color:"#057A55",textTransform:"uppercase",letterSpacing:"0.6px",marginBottom:12}}>🚀 Breakout / Buy Low ({breakouts.length})</div>
+        {breakouts.length===0?<div style={{color:"#6B7280"}}>None detected</div>:breakouts.slice(0,8).map(p=><Card key={p.id} p={p}/>)}
+      </div>
+      <div>
+        <div style={{fontSize:12,fontWeight:700,color:"#C41E3A",textTransform:"uppercase",letterSpacing:"0.6px",marginBottom:12}}>⚠️ Bust Risks ({busts.length})</div>
+        {busts.length===0?<div style={{color:"#6B7280"}}>None detected</div>:busts.slice(0,8).map(p=><Card key={p.id} p={p}/>)}
+      </div>
+    </div>
+  );
+}
+
+// ── Run Detector ──────────────────────────────────────────────────────────────
+function RunDetector({draftLog, currentPick}) {
+  if (draftLog.length<3) return (
+    <div style={{textAlign:"center",padding:60,color:"#6B7280"}}>
+      <div style={{fontSize:32,marginBottom:8}}>👁</div>
+      <div style={{fontSize:15,fontWeight:600,color:"#1A1A2E"}}>Watching for position runs...</div>
+      <div style={{fontSize:13,marginTop:4}}>Draft 3+ players to activate</div>
+    </div>
+  );
+  const recentN=Math.min(draftLog.length,6);
+  const recent=draftLog.slice(-recentN);
+  const recentCounts={};
+  recent.forEach(({player:p})=>{const pos=p.pos||"?";recentCounts[pos]=(recentCounts[pos]||0)+1;});
+  const allCounts={};
+  draftLog.forEach(({player:p})=>{const pos=p.pos||"?";allCounts[pos]=(allCounts[pos]||0)+1;});
+  const runs=Object.entries(recentCounts).filter(([,n])=>n>=2).sort((a,b)=>b[1]-a[1]);
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      <div style={{background:"#FFFFFF",border:"1px solid #E2DFD8",borderRadius:10,padding:16}}>
+        <div style={{fontSize:11,fontWeight:700,color:"#1A1A2E",textTransform:"uppercase",letterSpacing:"0.6px",marginBottom:12}}>Position Runs — Last {recentN} Picks</div>
+        {runs.length===0
+          ?<div style={{color:"#057A55",fontSize:13,fontWeight:600}}>✓ No runs detected</div>
+          :runs.map(([pos,count])=>{
+            const color=count>=3?"#C41E3A":"#D97706";
+            const pc=posColor(pos);
+            return (
+              <div key={pos} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 12px",
+                background:color+"10",border:`1px solid ${color}30`,borderRadius:8,marginBottom:8}}>
+                <div style={{width:32,height:32,borderRadius:6,background:pc+"22",border:`1px solid ${pc}60`,
+                  display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:pc}}>
+                  {pos}
+                </div>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:13,fontWeight:700,color}}>{count>=3?"🔴 Heavy Run":"🟡 Run Detected"} — {pos}</div>
+                  <div style={{fontSize:11,color:"#6B7280"}}>{count} {pos} taken in last {recentN} picks</div>
+                </div>
+                <div style={{fontSize:22,fontWeight:700,color,fontFamily:"'DM Mono',monospace"}}>{count}</div>
+              </div>
+            );
+          })
+        }
+      </div>
+      <div style={{background:"#FFFFFF",border:"1px solid #E2DFD8",borderRadius:10,padding:16}}>
+        <div style={{fontSize:11,fontWeight:700,color:"#1A1A2E",textTransform:"uppercase",letterSpacing:"0.6px",marginBottom:12}}>Recent Timeline</div>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+          {recent.map(({pick,player:p},i)=>{
+            const pc=posColor(p.pos||"?");
+            return (
+              <div key={i} style={{background:pc+"15",border:`1px solid ${pc}50`,borderRadius:6,padding:"6px 10px",textAlign:"center",minWidth:72}}>
+                <div style={{fontSize:8,color:"#6B7280",marginBottom:1}}>Pick {pick||"K"}</div>
+                <div style={{fontSize:9,fontWeight:700,color:pc}}>{(p.pos||"?").slice(0,3)}</div>
+                <div style={{fontSize:10,fontWeight:600,color:"#1A1A2E",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:68}}>{p.name.split(" ").slice(-1)[0]}</div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <div style={{background:"#FFFFFF",border:"1px solid #E2DFD8",borderRadius:10,padding:16}}>
+        <div style={{fontSize:11,fontWeight:700,color:"#1A1A2E",textTransform:"uppercase",letterSpacing:"0.6px",marginBottom:12}}>All Positions Drafted</div>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          {Object.entries(allCounts).sort((a,b)=>b[1]-a[1]).map(([pos,n])=>{
+            const pc=posColor(pos);
+            return (
+              <div key={pos} style={{background:pc+"15",border:`1px solid ${pc}50`,borderRadius:6,padding:"6px 14px",textAlign:"center"}}>
+                <div style={{fontSize:11,fontWeight:700,color:pc}}>{pos}</div>
+                <div style={{fontSize:18,fontWeight:700,color:"#1A1A2E",fontFamily:"'DM Mono',monospace"}}>{n}</div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Age Curve Board ───────────────────────────────────────────────────────────
+function AgeCurveBoard({players, drafted}) {
+  const available=players.filter(p=>!drafted.has(p.id));
+  const getAge=p=>{
+    const h=(p.history||[]).sort((a,b)=>(b.season||0)-(a.season||0));
+    return h[0]?.Age?parseInt(h[0].Age):null;
+  };
+  const withAge=available.map(p=>({...p,_age:getAge(p)})).filter(p=>p._age);
+  const groups=[
+    {key:"Prime",   color:"#1B3FA0"},
+    {key:"Rising",  color:"#059669"},
+    {key:"Aging",   color:"#D97706"},
+    {key:"Declining",color:"#C41E3A"},
+  ];
+  return (
+    <div>
+      <div style={{background:"#FFFFFF",border:"1px solid #E2DFD8",borderRadius:10,padding:14,marginBottom:14,display:"flex",gap:20,flexWrap:"wrap"}}>
+        {[{l:"Rising",c:"#059669",d:"Pre-peak"},{l:"Prime",c:"#1B3FA0",d:"Peak age"},{l:"Aging",c:"#D97706",d:"Post-peak"},{l:"Declining",c:"#C41E3A",d:"Late career"}].map(s=>(
+          <div key={s.l} style={{display:"flex",alignItems:"center",gap:6}}>
+            <div style={{width:10,height:10,borderRadius:2,background:s.c}}/>
+            <span style={{fontSize:11,fontWeight:600,color:s.c}}>{s.l}</span>
+            <span style={{fontSize:10,color:"#6B7280"}}>{s.d}</span>
+          </div>
+        ))}
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+        {groups.map(({key,color})=>{
+          const list=withAge.filter(p=>getAgeCurveStage(p._age,p.type).label===key).sort((a,b)=>b.VAR-a.VAR);
+          const icons={"Prime":"🔵","Rising":"🟢","Aging":"🟡","Declining":"🔴"};
+          return (
+            <div key={key} style={{background:"#FFFFFF",border:"1px solid #E2DFD8",borderRadius:10,padding:14}}>
+              <div style={{fontSize:11,fontWeight:700,color,textTransform:"uppercase",letterSpacing:"0.6px",marginBottom:12}}>
+                {icons[key]} {key} ({list.length})
+              </div>
+              <div style={{maxHeight:280,overflowY:"auto",display:"flex",flexDirection:"column",gap:4}}>
+                {list.slice(0,15).map(p=>{
+                  const pc=posColor(p.pos||"?"),vc=p.VAR>=8?"#057A55":p.VAR>=2?"#1B3FA0":"#6B7280";
+                  return (
+                    <div key={p.id} style={{display:"flex",alignItems:"center",gap:8,padding:"4px 0",borderBottom:"1px solid #F5F3EE"}}>
+                      <div style={{width:20,height:20,borderRadius:3,background:pc+"22",border:`1px solid ${pc}60`,
+                        display:"flex",alignItems:"center",justifyContent:"center",fontSize:7,fontWeight:700,color:pc,flexShrink:0}}>
+                        {(p.pos||"?").slice(0,3)}
+                      </div>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:11,fontWeight:600,color:"#1A1A2E",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</div>
+                        <div style={{fontSize:9,color:"#6B7280"}}>{p.team} · Age {p._age}</div>
+                      </div>
+                      <div style={{fontSize:11,fontWeight:700,color:vc,fontFamily:"'DM Mono',monospace",flexShrink:0}}>{p.VAR>0?"+":""}{p.VAR}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── Pick Predictor ────────────────────────────────────────────────────────────
+function PickPredictor({players, drafted, myPicks, currentPick}) {
+  const nextPicks=myPicks.filter(p=>p.overall>=currentPick).slice(0,3);
+  const available=players.filter(p=>!drafted.has(p.id)&&p.adp!=null);
+  if (nextPicks.length===0) return <div style={{textAlign:"center",padding:60,color:"#6B7280"}}>Draft complete!</div>;
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      {nextPicks.map(({round,overall})=>{
+        const picksAway=overall-currentPick;
+        const likelyGone=available.filter(p=>p.adp<currentPick+(picksAway*0.6)).sort((a,b)=>(a.adp||999)-(b.adp||999)).slice(0,5);
+        const likelyAvail=available.filter(p=>p.adp>=overall-3&&p.adp<=overall+10).sort((a,b)=>(a.adp||999)-(b.adp||999)).slice(0,5);
+        return (
+          <div key={overall} style={{background:"#FFFFFF",border:"1px solid #E2DFD8",borderRadius:10,padding:16}}>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
+              <div style={{background:"#1B3FA015",border:"1px solid #1B3FA040",borderRadius:6,
+                padding:"4px 12px",fontSize:12,fontWeight:700,color:"#1B3FA0"}}>
+                Round {round} · Pick #{overall}
+              </div>
+              <span style={{fontSize:11,color:"#6B7280"}}>{picksAway} picks away</span>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+              <div>
+                <div style={{fontSize:10,fontWeight:700,color:"#C41E3A",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:8}}>⚡ Likely Gone</div>
+                {likelyGone.length===0?<div style={{color:"#6B7280",fontSize:12}}>No one at risk</div>:
+                  likelyGone.map(p=>(
+                    <div key={p.id} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 0",borderBottom:"1px solid #F5F3EE"}}>
+                      <span style={{fontSize:10,color:posColor(p.pos||"?"),fontWeight:700,width:24,flexShrink:0}}>{(p.pos||"?").slice(0,3)}</span>
+                      <span style={{fontSize:11,color:"#1A1A2E",fontWeight:600,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</span>
+                      <span style={{fontSize:10,color:"#C41E3A",fontFamily:"'DM Mono',monospace",fontWeight:700,flexShrink:0}}>ADP {Math.round(p.adp)}</span>
+                    </div>
+                  ))
+                }
+              </div>
+              <div>
+                <div style={{fontSize:10,fontWeight:700,color:"#057A55",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:8}}>✓ Likely Available</div>
+                {likelyAvail.length===0?<div style={{color:"#6B7280",fontSize:12}}>Uncertain</div>:
+                  likelyAvail.map(p=>(
+                    <div key={p.id} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 0",borderBottom:"1px solid #F5F3EE"}}>
+                      <span style={{fontSize:10,color:posColor(p.pos||"?"),fontWeight:700,width:24,flexShrink:0}}>{(p.pos||"?").slice(0,3)}</span>
+                      <span style={{fontSize:11,color:"#1A1A2E",fontWeight:600,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</span>
+                      <span style={{fontSize:10,color:"#057A55",fontFamily:"'DM Mono',monospace",fontWeight:700,flexShrink:0}}>ADP {Math.round(p.adp)}</span>
+                    </div>
+                  ))
+                }
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── Main App ──────────────────────────────────────────────────────────────────
 export default function App() {
   const [data,setData]         = useState(null);
@@ -854,7 +1230,6 @@ export default function App() {
   const [draftLog,setDraftLog]   = useState([]);           // [{pick, player}] — my picks only
   const [currentPick,setCurrentPick] = useState(1);
   const [draftPosFilter,setDraftPosFilter] = useState("All");
-  const [analysisTab,setAnalysisTab] = useState("targets");
   const searchRef = useRef(null);
 
   useEffect(()=>{
