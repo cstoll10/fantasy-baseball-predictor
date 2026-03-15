@@ -185,7 +185,11 @@ def fetch_pitcher_roles():
 
 def normalize_name(name):
     if not isinstance(name, str): return ""
+    import unicodedata
     name = name.strip()
+    # Strip accent marks so Pérez == Perez, Muñoz == Munoz etc.
+    name = unicodedata.normalize("NFD", name)
+    name = "".join(c for c in name if unicodedata.category(c) != "Mn")
     name = re.sub(r"\s+(Jr\.?|Sr\.?|II|III|IV)$", "", name, flags=re.IGNORECASE)
     return name.lower()
 

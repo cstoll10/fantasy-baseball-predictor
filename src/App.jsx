@@ -1361,14 +1361,18 @@ export default function App() {
   const pitcherSkillPcts = useMemo(()=>buildSkillPercentiles(players,"pitcher"), [players]);
   const getSkillPcts = useCallback(p=>p.type==="hitter"?hitterSkillPcts:pitcherSkillPcts,[hitterSkillPcts,pitcherSkillPcts]);
 
+  // Normalize accents for name matching
+  const normalizeAccents = (s) => s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+
   // Resolve my keeper players from the pool
   const myKeepers = useMemo(()=>
-    MY_KEEPERS.map(name=>players.find(p=>p.name.toLowerCase()===name)).filter(Boolean)
+    MY_KEEPERS.map(name=>players.find(p=>normalizeAccents(p.name)===normalizeAccents(name))).filter(Boolean)
   ,[players]);
 
-  // Resolve other teams' keepers
+  // Resolve other teams' keepers — normalize accents for matching
+  const normalizeAccents = (s) => s.normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase();
   const otherKeepers = useMemo(()=>
-    OTHER_KEEPERS.map(name=>players.find(p=>p.name.toLowerCase()===name)).filter(Boolean)
+    OTHER_KEEPERS.map(name=>players.find(p=>normalizeAccents(p.name)===normalizeAccents(name))).filter(Boolean)
   ,[players]);
 
   // Auto-mark all keepers as drafted on load
